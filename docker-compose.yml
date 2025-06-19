@@ -1,0 +1,9 @@
+services:
+  storage-proxy:
+    container_name: storage-proxy
+    image: ghcr.io/joncrangle/storage-proxy:latest
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    restart: unless-stopped

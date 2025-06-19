@@ -1,0 +1,10 @@
+node_modules
+tests/
+*.log
+*.test.*
+.env*
+.git
+.gitignore
+biome.json
+Dockerfile
+README.md

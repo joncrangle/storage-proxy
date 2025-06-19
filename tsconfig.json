@@ -1,0 +1,27 @@
+{
+	"compilerOptions": {
+		"target": "ESNext",
+		"jsx": "react-jsx",
+		"jsxImportSource": "hono/jsx",
+		"module": "ESNext",
+		"moduleResolution": "Bundler",
+		"types": [
+			"bun-types"
+		],
+		"strict": true,
+		"outDir": "./dist",
+		"skipLibCheck": true
+	},
+	"tsc-alias": {
+		"resolveFullPaths": true
+	},
+	"include": [
+		"mock",
+		"src",
+		"tests"
+	],
+	"exclude": [
+		"node_modules",
+		"dist"
+	]
+}

@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Azure Blob / AWS S3 Proxy Tester</title>
+    <style>
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+        line-height: 1.5;
+        margin: 0;
+        padding: 40px 20px;
+        background-color: #f8f9fa;
+        color: #212529;
+      }
+      .container {
+        max-width: 700px;
+        margin: 12px auto;
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        padding: 30px;
+      }
+      h1,
+      h2 {
+        margin: 0 0 30px 0;
+        font-weight: 600;
+        color: #343a40;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 20px;
+      }
+      th,
+      td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid #dee2e6;
+      }
+      th {
+        background-color: #f8f9fa;
+        font-weight: 600;
+        color: #495057;
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+      }
+      .btn {
+        padding: 6px 12px;
+        border: 1px solid #ced4da;
+        border-radius: 3px;
+        background: white;
+        color: #495057;
+        text-decoration: none;
+        font-size: 14px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .btn:hover {
+        background-color: #e9ecef;
+        border-color: #adb5bd;
+      }
+      .btn-primary {
+        background-color: #0d6efd;
+        color: white;
+        border-color: #0d6efd;
+      }
+      .btn-primary:hover {
+        background-color: #0b5ed7;
+        border-color: #0a58ca;
+      }
+      .status {
+        padding: 12px;
+        margin-top: 20px;
+        border-radius: 3px;
+        font-size: 14px;
+        background-color: #d1ecf1;
+        border: 1px solid #bee5eb;
+        color: #0c5460;
+      }
+      @media (max-width: 600px) {
+        .container {
+          padding: 20px;
+        }
+        .actions {
+          flex-direction: column;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Azure Blob / S3 Proxy Test</h1>
+      <p>
+        <strong>Note:</strong> Most endpoints require authentication. Use the
+        <a href="http://localhost:3000/docs" target="_blank">API Docs</a> to
+        authenticate and try requests interactively.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>File Name</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>sastestblob.txt</td>
+            <td>
+              <div class="actions">
+                <a
+                  href="http://localhost:3000/v1/files/test-container/sastestblob.txt"
+                  target="_blank"
+                  class="btn"
+                  >View</a
+                >
+                <a
+                  href="http://localhost:3000/v1/files/download/test-container/sastestblob.txt"
+                  class="btn btn-primary"
+                  download="sastestblob.txt"
+                  >Download</a
+                >
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td>sastestblob.pdf</td>
+            <td>
+              <div class="actions">
+                <a
+                  href="http://localhost:3000/v1/files/test-container/sastestblob.pdf"
+                  target="_blank"
+                  class="btn"
+                  >View</a
+                >
+                <a
+                  href="http://localhost:3000/v1/files/download/test-container/sastestblob.pdf"
+                  class="btn btn-primary"
+                  download="sastestblob.pdf"
+                  >Download</a
+                >
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td>sastestblob2.txt</td>
+            <td>
+              <div class="actions">
+                <a
+                  href="http://localhost:3000/v1/files/test-container2/sastestblob2.txt"
+                  target="_blank"
+                  class="btn"
+                  >View</a
+                >
+                <a
+                  href="http://localhost:3000/v1/files/download/test-container2/sastestblob2.txt"
+                  class="btn btn-primary"
+                  download="sastestblob2.txt"
+                  >Download</a
+                >
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="container">
+      <h2>Other API Routes</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Route</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>/</td>
+            <td>
+              <a href="http://localhost:3000" target="_blank"
+                >General App Status</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>/docs</td>
+            <td>
+              <a href="http://localhost:3000/docs" target="_blank"
+                >API Docs (Scalar UI, OAuth login)</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>/openapi</td>
+            <td>
+              <a href="http://localhost:3000/openapi" target="_blank"
+                >OpenAPI Spec (JSON)</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>/health</td>
+            <td>
+              <a href="http://localhost:3000/health" target="_blank"
+                >Health Check</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>/v1/files/list</td>
+            <td>
+              <a href="http://localhost:3000/v1/files/list" target="_blank"
+                >List Containers and Blobs</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              /v1/metrics/files?limit=10&startDate=2025-01-01&endDate=2025-01-31
+            </td>
+            <td>
+              <a
+                href="http://localhost:3000/v1/metrics/files?limit=10&startDate=2025-01-01&endDate=2025-01-31"
+                target="_blank"
+                >Top Accessed Files (all containers, with filters)</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>/v1/metrics/containers</td>
+            <td>
+              <a
+                href="http://localhost:3000/v1/metrics/containers"
+                target="_blank"
+                >Aggregated Stats for Containers</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>/v1/metrics/summary</td>
+            <td>
+              <a href="http://localhost:3000/v1/metrics/summary" target="_blank"
+                >Summary Stats for Containers</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>/v1/metrics/test-container/files?limit=5</td>
+            <td>
+              <a
+                href="http://localhost:3000/v1/metrics/test-container/files?limit=5"
+                target="_blank"
+                >Files Accessed in Container (with limit)</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>/v1/metrics/test-container/summary</td>
+            <td>
+              <a
+                href="http://localhost:3000/v1/metrics/test-container/summary"
+                target="_blank"
+                >Summary Stats for Container</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>/v1/metrics/test-container/export?format=csv</td>
+            <td>
+              <a
+                href="http://localhost:3000/v1/metrics/test-container/export?format=csv"
+                target="_blank"
+                >Export Metrics (CSV)</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>/v1/metrics/test-container/export?format=json</td>
+            <td>
+              <a
+                href="http://localhost:3000/v1/metrics/test-container/export?format=json"
+                target="_blank"
+                >Export Metrics (JSON)</a
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h3>Metrics Actions (POST)</h3>
+      <form
+        method="post"
+        action="http://localhost:3000/v1/metrics"
+        style="margin-bottom: 16px"
+      >
+        <label for="action">Action:</label>
+        <select name="action" id="action">
+          <option value="clear">Clear (non-production only)</option>
+          <option value="persist">Persist</option>
+        </select>
+        <button type="submit" class="btn btn-primary">Send</button>
+      </form>
+    </div>
+  </body>
+</html>
