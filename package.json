@@ -1,0 +1,46 @@
+{
+	"name": "storage-proxy",
+	"version": "0.0.1",
+	"description": "Authenticated proxy for Azure Blob Storage or AWS S3 Buckets with Entra ID",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/joncrangle/storage-proxy.git"
+	},
+	"type": "module",
+	"scripts": {
+		"build": "tsc --project tsconfig.json",
+		"start": "bun run build && NODE_ENV=production bun run ./dist/src/app.js",
+		"dev:services": "concurrently -n AZ,MOTO -c magenta,cyan \"bun run azurite\" \"bun run moto\" || true",
+		"dev:wait": "wait-on tcp:10000 tcp:4566",
+		"dev:nodemon": "bun run --hot src/app.ts",
+		"dev": "concurrently -n SERVICES,WAIT,NODE -c yellow,gray,green -k \"bun run dev:services\" \"bun run dev:wait && bun run dev:nodemon\"",
+		"lint": "biome lint --write ./src",
+		"format": "biome format --write ./src",
+		"azurite": "azurite --loose --skipApiVersionCheck --disableTelemetry --location ./AzuriteConfig --debug ./AzuriteConfig/debug.log",
+		"moto": "uvx --from 'moto[server]' moto_server -H 0.0.0.0 -p 4566",
+		"test": "concurrently --success=first --kill-others -n SERVICES,WAIT,NODE -c yellow,gray,green \"bun run dev:services\" \"bun run dev:wait && bun test tests/app.test.ts\""
+	},
+	"dependencies": {
+		"@aws-sdk/client-s3": "^3.842.0",
+		"@azure/msal-node": "^3.6.2",
+		"@azure/storage-blob": "^12.27.0",
+		"jsonwebtoken": "^9.0.2",
+		"hono": "^4.8.4",
+		"jwks-rsa": "^3.2.0",
+		"redis": "^5.5.6"
+	},
+	"peerDependencies": {
+		"typescript": "^5.8.3"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.0.6",
+		"@types/bun": "latest",
+		"@types/jsonwebtoken": "^9.0.10",
+		"azurite": "^3.34.0",
+		"concurrently": "^9.2.0",
+		"nodemon": "^3.1.10",
+		"wait-on": "^8.0.3",
+		"zod": "^3.25.74"
+	}
+}

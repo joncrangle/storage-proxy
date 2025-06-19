@@ -1,0 +1,81 @@
+### 1A. Create the container "test-container"
+
+< {%
+   request.variables.set("container", "test-container");
+%}
+
+< ./az.js
+
+PUT {{containerSasUrl}}&restype=container HTTP/1.1
+
+
+### 1B. Create the container "test-container2"
+
+< {%
+   request.variables.set("container", "test-container2");
+%}
+
+< ./az.js
+
+PUT {{containerSasUrl}}&restype=container HTTP/1.1
+
+
+### 2A. PUT a txt blob in container "test-container"
+
+< {%
+   request.variables.set("container", "test-container");
+   request.variables.set("blob", "sastestblob.txt");
+%}
+
+< ./az.js
+
+PUT {{blobSasUrl}} HTTP/1.1
+Content-Type: text/plain
+X-Ms-Blob-Type: BlockBlob
+
+Hello from Azurite
+
+
+### 2B. PUT a pdf blob in container "test-container"
+
+< {%
+   request.variables.set("container", "test-container");
+   request.variables.set("blob", "sastestblob.pdf");
+%}
+
+< ./az.js
+
+PUT {{blobSasUrl}} HTTP/1.1
+Content-Type: application/pdf
+X-Ms-Blob-Type: BlockBlob
+
+< ../test.pdf
+
+
+### 2C. PUT a txt blob in container "test-container2"
+
+# @name putBlobWithSas
+
+< {%
+   request.variables.set("container", "test-container2");
+   request.variables.set("blob", "sastestblob2.txt");
+%}
+
+< ./az.js
+
+PUT {{blobSasUrl}} HTTP/1.1
+Content-Type: text/plain
+X-Ms-Blob-Type: BlockBlob
+
+Hello from Azurite test-container2!
+
+
+### 3. GET a blob using
+
+< {%
+   request.variables.set("container", "test-container");
+   request.variables.set("blob", "sastestblob.txt");
+%}
+
+< az.js
+GET {{blobSasUrl}} HTTP/1.1
