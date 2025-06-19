@@ -1,0 +1,66 @@
+### 1A. Create the bucket "test-container"
+
+< {%
+  request.variables.set("bucket", "test-container");
+  request.variables.set("operation", "create-bucket");
+%}
+< ./s3.js
+PUT {{bucketUrl}} HTTP/1.1
+
+### 1B. Create the bucket "test-container2"
+
+< {%
+  request.variables.set("bucket", "test-container2");
+  request.variables.set("operation", "create-bucket");
+%}
+< ./s3.js
+PUT {{bucketUrl}} HTTP/1.1
+
+### 2A. PUT a txt object in container "test-container"
+
+< {%
+  request.variables.set("bucket", "test-container");
+  request.variables.set("key", "sastestblob.txt");
+  request.variables.set("operation", "presign");
+%}
+< ./s3.js
+PUT {{signedPutUrl}} HTTP/1.1
+Content-Type: text/plain
+
+Hello from Moto test-container
+
+### 2B. PUT a pdf object in container "test-container"
+
+< {%
+  request.variables.set("bucket", "test-container");
+  request.variables.set("key", "sastestblob.pdf");
+  request.variables.set("operation", "presign");
+%}
+< ./s3.js
+PUT {{signedPutUrl}} HTTP/1.1
+Content-Type: application/pdf
+
+
+
+### 2C. PUT a txt object in container "test-container2"
+
+< {%
+  request.variables.set("bucket", "test-container2");
+  request.variables.set("key", "sastestblob2.txt");
+  request.variables.set("operation", "presign");
+%}
+< ./s3.js
+PUT {{signedPutUrl}} HTTP/1.1
+Content-Type: text/plain
+
+Hello from Moto test-container2!
+
+### 3. GET a file using
+
+< {%
+  request.variables.set("bucket", "test-container");
+  request.variables.set("key", "sastestblob.txt");
+  request.variables.set("operation", "presign");
+%}
+< ./s3.js
+GET {{signedGetUrl}} HTTP/1.1
