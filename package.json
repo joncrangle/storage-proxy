@@ -7,7 +7,7 @@
 	"scripts": {
 		"build": "tsc",
 		"start": "node ./dist/app.js",
-		"dev:services": "concurrently -n AZ,MOTO -c blue,magenta \"pnpm run azurite\" \"pnpm run moto\"",
+		"dev:services": "concurrently -n AZ,MOTO -c magenta,cyan \"pnpm run azurite\" \"pnpm run moto\" || true",
 		"dev:wait": "wait-on tcp:10000 tcp:4566",
 		"dev:nodemon": "nodemon --watch src/ --exec tsx src/app.ts",
 		"dev": "concurrently -n SERVICES,WAIT,NODE -c yellow,gray,green -k \"pnpm run dev:services\" \"pnpm run dev:wait && pnpm run dev:nodemon\"",
@@ -15,7 +15,7 @@
 		"format": "biome format --write ./src",
 		"azurite": "azurite --loose --skipApiVersionCheck --disableTelemetry --location ./AzuriteConfig --debug ./AzuriteConfig/debug.log",
 		"moto": "uvx --from 'moto[server]' moto_server -H 0.0.0.0 -p 4566",
-		"test": "concurrently -n SERVICES,WAIT,NODE -c yellow,gray,green \"pnpm run dev:services\" \"pnpm run dev:wait && vitest --watch\""
+		"test": "concurrently --success=first --kill-others -n SERVICES,WAIT,NODE -c yellow,gray,green \"pnpm run dev:services\" \"pnpm run dev:wait && vitest\""
 	},
 	"keywords": [],
 	"author": "",
@@ -39,6 +39,7 @@
 		"winston": "^3.17.0"
 	},
 	"devDependencies": {
+		"@biomejs/biome": "^2.0.6",
 		"@types/compression": "^1.8.1",
 		"@types/cors": "^2.8.19",
 		"@types/express": "^5.0.3",

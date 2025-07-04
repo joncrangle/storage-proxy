@@ -28,17 +28,26 @@ if (config.NODE_ENV === "production" && !config.SESSION_SECRET) {
 	process.exit(1);
 }
 
-// Prepopulate Moto S3 buckets in local development/test
-if (
-	(config.NODE_ENV === "development" || config.NODE_ENV === "test") &&
-	config.STORAGE_PROVIDER === "s3"
-) {
-	import("../mock/aws/prepopulate-moto")
-		.then(({ prepopulateBuckets }) => prepopulateBuckets())
-		.then(() => logger.info("Moto S3 buckets prepopulated."))
-		.catch((err) =>
-			logger.warn("Moto S3 prepopulation failed", { error: err.message }),
-		);
+// Prepopulate local development/test storage providers
+if (config.NODE_ENV === "development" || config.NODE_ENV === "test") {
+	if (config.STORAGE_PROVIDER === "azure") {
+		import("../mock/azure/prepopulate-azurite")
+			.then(({ prepopulateContainers }) => prepopulateContainers())
+			.then(() => logger.info("Azurite blobs prepopulated."))
+			.catch((err) =>
+				logger.warn("Azurite blobs prepopulation failed", {
+					error: err.message,
+				}),
+			);
+	}
+	if (config.STORAGE_PROVIDER === "s3") {
+		import("../mock/aws/prepopulate-moto")
+			.then(({ prepopulateBuckets }) => prepopulateBuckets())
+			.then(() => logger.info("Moto S3 buckets prepopulated."))
+			.catch((err) =>
+				logger.warn("Moto S3 prepopulation failed", { error: err.message }),
+			);
+	}
 }
 
 const app = express();
