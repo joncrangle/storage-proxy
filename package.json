@@ -5,7 +5,7 @@
 	"main": "dist/app.js",
 	"type": "module",
 	"scripts": {
-		"build": "tsc",
+		"build": "tsup",
 		"start": "node ./dist/app.js",
 		"dev:services": "concurrently -n AZ,MOTO -c magenta,cyan \"pnpm run azurite\" \"pnpm run moto\" || true",
 		"dev:wait": "wait-on tcp:10000 tcp:4566",
@@ -53,6 +53,7 @@
 		"concurrently": "^9.2.0",
 		"nodemon": "^3.1.10",
 		"supertest": "^7.1.1",
+		"tsup": "^8.5.0",
 		"typescript": "^5.8.3",
 		"vitest": "^3.2.4",
 		"wait-on": "^8.0.3",

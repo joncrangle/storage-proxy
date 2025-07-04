@@ -2,6 +2,7 @@ import compression from "compression";
 import cors from "cors";
 import express, {
 	type ErrorRequestHandler,
+	type Express,
 	json,
 	type RequestHandler,
 	type Response,
@@ -50,7 +51,7 @@ if (config.NODE_ENV === "development" || config.NODE_ENV === "test") {
 	}
 }
 
-const app = express();
+const app: Express = express();
 
 const swaggerDefinition = {
 	openapi: "3.0.4",

@@ -8,7 +8,7 @@ import { logger } from "@/services/logger";
 import { metricsCollector } from "@/services/metrics";
 import type { CustomRequest } from "@/types";
 
-const router = Router();
+const router: Router = Router();
 
 router.use(requireAuth, requireOrgAccess);
 

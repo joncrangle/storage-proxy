@@ -7,7 +7,7 @@ import { logger } from "@/services/logger";
 import { listContainersAndBlobs } from "@/services/storage";
 import type { ContainerInfo, CustomRequest } from "@/types";
 
-const router = Router();
+const router: Router = Router();
 
 // @ts-ignore
 router.get("/favicon.ico", (_req, res) => res.status(204).end());

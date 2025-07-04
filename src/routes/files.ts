@@ -18,7 +18,7 @@ import {
 } from "@/services/storage";
 import type { CustomRequest } from "@/types";
 
-const router = Router();
+const router: Router = Router();
 
 const validateFileRequest = validateRequest({ params: fileRouteSchema });
 router.use(requireAuth, requireOrgAccess);

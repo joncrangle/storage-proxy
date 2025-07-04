@@ -6,7 +6,7 @@ import { sessionUserSchema } from "@/schemas";
 import { logger } from "@/services/logger";
 import type { CustomRequest } from "@/types";
 
-const router = Router();
+const router: Router = Router();
 
 /**
  * @openapi
