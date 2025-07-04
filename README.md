@@ -1,11 +1,11 @@
 # Azure Blob / S3 Bucket Proxy Server
 
-A secure, authenticated service for proxying anchor link requests to Azure Blob storage and S3 buckets using Microsoft Entra ID for authentication. This service tracks file accesses and provides aggregate statistics, making it easy to monitor usage across multiple storage providers.
+A secure, authenticated service for proxying anchor link requests to Azure Blob storage and S3 buckets using Microsoft Entra ID for authentication. This service tracks file accesses and provides aggregate statistics, making it easy to monitor usage.
 
 ## 🚀 Features
 
-- 🔐 Proxy requests to Azure Blob Storage containers and S3 buckets.
-- 🔐 Authenticated access via Azure OAuth
+- 🔐 Proxy requests to Azure Blob Storage containers and S3 buckets via [Express.js](https://expressjs.com/).
+- 🔐 Authenticated access via Microsoft Entra ID.
 - 📦 Tracks accesses to files across containers/buckets
 - 📈 View top accessed files collectively and per container/bucket
 - 📊 Retrieve aggregate statistics collectively and per container/bucket
@@ -91,9 +91,42 @@ See `.sample.env` for environment variables. Copy to `.env` and fill in your Azu
 
 This application exposes a Swagger API at `/api` for easy testing and exploration.
 
+## 🏗️ Local Usage
+
+### Build and Serve
+
+```bash
+# build the application
+pnpm build
+# serve the application
+pnpm start
+```
+
+## 🐳 Docker Usage
+
+You can build and run this app in a Docker container:
+
+1. Build the Docker image:
+
+```bash
+docker build -t storage-proxy .
+```
+
+2. Copy your `.env` file (with secrets/config) into the project root, or use Docker secrets/volumes as needed.
+
+3. Run the container:
+
+```bash
+docker run --env-file .env -p 3000:3000 storage-proxy
+```
+
+- The app will be available at http://localhost:3000 (or the port you map).
+- For development, you may mount your source code and .env file as volumes.
+- For production, ensure your .env is secure and not included in your image.
+
 ## 🧪 Development
 
-```
+```bash
 pnpm install
 pnpm dev
 ```
@@ -106,7 +139,7 @@ See `mock/azure/azurite.http` for a helper to create containers and test blobs i
 
 `uv` is required. Moto is an in-memory server that emulates AWS services.
 
-```
+```bash
 pnpm moto
 ```
 
@@ -116,7 +149,7 @@ Then use `mock/aws/moto.http` to create buckets and upload test files.
 
 This project uses [Vitest](https://vitest.dev/) for testing. Run tests with:
 
-```
+```bash
 pnpm test
 ```
 

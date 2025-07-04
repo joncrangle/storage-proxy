@@ -1,6 +1,5 @@
-import { z } from "zod";
-import "@dotenvx/dotenvx/config";
 import { randomBytes } from "node:crypto";
+import { z } from "zod";
 
 const configSchema = z.object({
 	STORAGE_PROVIDER: z.string().optional().default("azure"),
@@ -50,6 +49,27 @@ const configSchema = z.object({
 	JWT_AUDIENCE: z.string().optional(),
 	JWT_ISSUER: z.string().optional(),
 	JWT_ALLOWED_APPS: z.string().optional(), // Comma-separated list of allowed app IDs
+	REDIS_HOST: z.string().optional().default("valkey"),
+	REDIS_PORT: z
+		.string()
+		.optional()
+		.default("6379")
+		.transform((val) => {
+			const port = Number(val);
+			if (Number.isNaN(port) || port <= 0 || port > 65535)
+				throw new Error("Invalid REDIS_PORT");
+			return port;
+		}),
+	REDIS_PASSWORD: z.string().optional(),
+	REDIS_DB: z
+		.string()
+		.optional()
+		.default("0")
+		.transform((val) => {
+			const port = Number(val);
+			if (Number.isNaN(val)) throw new Error("Invalid REDIS_DB");
+			return port;
+		}),
 	METRICS_STORAGE_PATH: z.string().optional().default("./metrics"),
 	METRICS_RETENTION_DAYS: z
 		.string()
@@ -58,9 +78,6 @@ const configSchema = z.object({
 		.transform((v) => Number.parseInt(v, 10)),
 });
 
-/**
- * Validated application configuration.
- */
 export const config = configSchema.parse(process.env);
 
 // Derived Constants
