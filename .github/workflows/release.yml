@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: ci
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+          cache: "pnpm"
+      - name: Get tag version
+        id: get_version
+        run: echo VERSION="${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      - name: Create and switch to temp branch for version bump
+        run: |
+          git switch -c version-bump-${{ steps.get_version.outputs.VERSION }}
+      - name: Debug current branch
+        run: |
+          git status
+          git branch
+      - name: Update package.json version
+        run: |
+          npm version ${{ steps.get_version.outputs.VERSION }} --no-git-tag-version
+      - name: Commit updated package.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          git commit -m "chore: update package.json version to ${{ steps.get_version.outputs.VERSION }}"
+      - name: Merge version bump into main
+        run: |
+          git fetch origin main
+          git checkout main
+          git pull
+          git merge --no-ff version-bump-${{ steps.get_version.outputs.VERSION }}
+          git push origin main
+      - name: Cleanup temp branch
+        run: |
+          git branch -D version-bump-${{ steps.get_version.outputs.VERSION }}
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          dockerfile: docker/Dockerfile
+          push: true
+          tags: ghcr.io/${{ github.repository }}:${{ github.ref_name }}

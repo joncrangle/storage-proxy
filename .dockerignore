@@ -1,0 +1,12 @@
+node_modules
+tests/
+*.log
+*.test.*
+.env*
+.git
+.gitignore
+biome.json
+vitest.config.ts
+Dockerfile
+README.md
+

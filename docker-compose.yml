@@ -1,0 +1,31 @@
+services:
+  storage-proxy:
+    container_name: storage-proxy
+    image: ghcr.io/joncrangle/storage-proxy:latest
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    depends_on:
+      - valkey
+    restart: unless-stopped
+    networks:
+      - storage-proxy-network
+
+  valkey:
+    container_name: valkey
+    image: valkey/valkey:latest
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - valkey-data:/data
+    networks:
+      - storage-proxy-network
+
+volumes:
+  valkey-data:
+
+networks:
+  storage-proxy-network:
+    driver: bridge

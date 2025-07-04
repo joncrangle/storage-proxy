@@ -3,33 +3,37 @@ name: CI
 on:
   push:
     branches: [master]
+    paths:
+      - "src/**"
   pull_request:
     branches: [master]
+    paths:
+      - "src/**"
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   ci:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
           run_install: false
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
           cache: "pnpm"
-
       - name: Get pnpm store directory
         shell: bash
         run: |
           echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
-
       - name: Setup pnpm cache
         uses: actions/cache@v4
         with:
@@ -37,24 +41,18 @@ jobs:
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
             ${{ runner.os }}-pnpm-store-
-
       - name: Setup Python and uv for moto
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
       - name: Run linting
         run: pnpm run lint
-
       - name: Create Azurite config directory
         run: mkdir -p ./AzuriteConfig
-
       - name: Run tests
         run: pnpm test
         timeout-minutes: 10

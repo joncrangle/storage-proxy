@@ -1,4 +1,5 @@
 import compression from "compression";
+import { RedisStore } from "connect-redis";
 import cors from "cors";
 import express, {
 	type ErrorRequestHandler,
@@ -11,6 +12,7 @@ import express, {
 import { rateLimit } from "express-rate-limit";
 import session from "express-session";
 import helmet from "helmet";
+import { createClient } from "redis";
 import swaggerJSDoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { config, PORT, SESSION_SECRET, SESSION_TIMEOUT } from "@/config";
@@ -27,6 +29,37 @@ import type { CustomRequest } from "@/types";
 if (config.NODE_ENV === "production" && !config.SESSION_SECRET) {
 	logger.error("SESSION_SECRET is required in production");
 	process.exit(1);
+}
+
+// Initialize Redis client only in production
+let redisClient: ReturnType<typeof createClient> | null = null;
+
+if (config.NODE_ENV === "production") {
+	redisClient = createClient({
+		socket: {
+			host: config.REDIS_HOST,
+			port: config.REDIS_PORT,
+		},
+		password: config.REDIS_PASSWORD,
+		database: config.REDIS_DB,
+	});
+
+	redisClient.on("connect", () => {
+		logger.info("Redis client connected");
+	});
+	redisClient.on("error", (err) => {
+		logger.error("Redis client error", { error: err.message });
+	});
+	redisClient.on("ready", () => {
+		logger.info("Redis client ready");
+	});
+	redisClient.on("close", () => {
+		logger.warn("Redis client connection closed");
+	});
+
+	await redisClient.connect();
+} else {
+	logger.info("Using memory store for sessions in development/test mode");
 }
 
 // Prepopulate local development/test storage providers
@@ -126,21 +159,27 @@ app.use(urlencoded({ extended: true, limit: "10mb" }));
 app.use(requestId as RequestHandler);
 app.use(requestLogger as RequestHandler);
 
-// Session Configuration
-app.use(
-	session({
-		secret: SESSION_SECRET,
-		resave: false,
-		saveUninitialized: false,
-		name: "blob-proxy-session",
-		cookie: {
-			secure: config.NODE_ENV === "production",
-			httpOnly: true,
-			maxAge: SESSION_TIMEOUT,
-			sameSite: "lax",
-		},
+// Session Configuration with Redis for production
+const sessionConfig: session.SessionOptions = {
+	...(redisClient && {
+		store: new RedisStore({
+			client: redisClient,
+			prefix: "storage-proxy:",
+			ttl: Math.floor(SESSION_TIMEOUT / 1000),
+		}),
 	}),
-);
+	secret: SESSION_SECRET,
+	resave: false,
+	saveUninitialized: false,
+	name: "storage-proxy-session",
+	cookie: {
+		secure: config.NODE_ENV === "production",
+		httpOnly: true,
+		maxAge: SESSION_TIMEOUT,
+		sameSite: "lax",
+	},
+};
+app.use(session(sessionConfig));
 
 // Mount All Routes
 app.use("/", apiRouter);
@@ -163,13 +202,34 @@ const server = app.listen(PORT, () => {
 });
 
 // Graceful Shutdown
-process.on("SIGTERM", () => {
-	logger.info("SIGTERM received, shutting down gracefully");
-	server.close(() => process.exit(0));
-});
-process.on("SIGINT", () => {
-	logger.info("SIGINT received, shutting down gracefully");
-	server.close(() => process.exit(0));
-});
+const shutdown = async () => {
+	logger.info("Shutting down gracefully");
+
+	if (redisClient) {
+		try {
+			redisClient.removeAllListeners();
+			await redisClient.close();
+			logger.info("Redis connection closed");
+		} catch (err) {
+			logger.error("Error closing Redis connection", {
+				error: err instanceof Error ? err.message : String(err),
+			});
+		}
+	}
+
+	server.close(() => {
+		logger.info("Express server closed");
+		process.exit(0);
+	});
+
+	// Force exit after 10 seconds if graceful shutdown fails
+	setTimeout(() => {
+		logger.warn("Forced shutdown after timeout");
+		process.exit(1);
+	}, 10000);
+};
+
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
 
 export default app;
