@@ -1,11 +1,11 @@
 # Azure Blob / S3 Bucket Proxy Server
 
-A secure, authenticated service for proxying anchor link requests to Azure Blob storage and S3 buckets using Microsoft Entra ID for authentication. This service tracks file accesses and provides aggregate statistics, making it easy to monitor usage across multiple storage providers.
+A secure, authenticated service for proxying anchor link requests to Azure Blob storage and S3 buckets using Microsoft Entra ID for authentication. This service tracks file accesses and provides aggregate statistics, making it easy to monitor usage.
 
 ## 🚀 Features
 
-- 🔐 Proxy requests to Azure Blob Storage containers and S3 buckets.
-- 🔐 Authenticated access via Azure OAuth
+- 🔐 Proxy requests to Azure Blob Storage containers and S3 buckets via [Express.js](https://expressjs.com/).
+- 🔐 Authenticated access via Microsoft Entra ID.
 - 📦 Tracks accesses to files across containers/buckets
 - 📈 View top accessed files collectively and per container/bucket
 - 📊 Retrieve aggregate statistics collectively and per container/bucket
@@ -44,6 +44,8 @@ flowchart TD
 
 ```
 .
+├── docker/
+│   └── Dockerfile               # Dockerfile for building the application
 ├── mock/
 │   ├── aws/
 │   │   ├── moto.http            # Setup S3 buckets and objects for Moto
@@ -77,9 +79,11 @@ flowchart TD
 ├── tests/
 │   └── app.test.ts              # Vitest tests
 ├── .sample.env                  # Environment variables
-├── biome.json                   # Biome linting config
+├── docker-compose.yml           # Docker Compose configuration
 ├── package.json                 # Project dependencies and scripts
+├── pnpm-lock.yaml               # pnpm lock file
 ├── tsconfig.json                # TypeScript configuration
+├── tsup.config.ts               # tsup bundler configuration
 └── vitest.config.ts             # Vitest configuration
 ```
 
@@ -91,9 +95,34 @@ See `.sample.env` for environment variables. Copy to `.env` and fill in your Azu
 
 This application exposes a Swagger API at `/api` for easy testing and exploration.
 
+## 🏗️ Local Usage
+
+### Build and Serve
+
+```bash
+# build the application
+pnpm build
+# serve the application
+pnpm start
+```
+
+## 🐳 Docker Usage
+
+Recommended to use `docker compose` to run both the application and [Valkey](https://valkey.io/).
+
+1. Copy your `.env` file (with secrets/config) into the project root, or use Docker secrets/volumes as needed.
+
+2. Run the storage-proxy and Valkey containers:
+
+```bash
+docker compose up -d
+```
+
+The app will be available at `http://localhost:3000` (or the port you map).
+
 ## 🧪 Development
 
-```
+```bash
 pnpm install
 pnpm dev
 ```
@@ -106,7 +135,7 @@ See `mock/azure/azurite.http` for a helper to create containers and test blobs i
 
 `uv` is required. Moto is an in-memory server that emulates AWS services.
 
-```
+```bash
 pnpm moto
 ```
 
@@ -116,7 +145,7 @@ Then use `mock/aws/moto.http` to create buckets and upload test files.
 
 This project uses [Vitest](https://vitest.dev/) for testing. Run tests with:
 
-```
+```bash
 pnpm test
 ```
 
