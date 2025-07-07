@@ -123,6 +123,19 @@ bun install
 bun run dev
 ```
 
+Update database after changing Drizzle schema:
+
+```bash
+bun run drizzle-kit push
+```
+
+
+Run Drizzle Studio to manage database:
+
+```bash
+bun run drizzle-kit studio
+```
+
 The application will be available at `http://localhost:3000`.
 
 ### Azurite Blob Storage Emulator

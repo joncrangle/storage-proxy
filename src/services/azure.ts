@@ -1,19 +1,19 @@
 import { BlobServiceClient } from "@azure/storage-blob";
 import { LRUCache } from "lru-cache";
-import { CACHE_TTL, config, STORAGE_CONNECTION_STRING } from "@/config";
-import { containerNameSchema } from "@/schemas";
-import { logger } from "@/services/logger";
-import type { StorageBlobProperties } from "@/types";
+import { AZURE_STORAGE_CONNECTION_STRING, CACHE_TTL } from "../config";
+import { logger } from "../services/logger";
+import {
+	containerNameSchema,
+	type StorageBlobProperties,
+} from "./storage.schemas";
 
-if (!STORAGE_CONNECTION_STRING) {
-	logger.error("Storage connection string is missing.", {
-		env: config.NODE_ENV,
-	});
+if (!AZURE_STORAGE_CONNECTION_STRING) {
+	logger.error("Azure storage connection string is missing.");
 	process.exit(1);
 }
 
 const blobServiceClient = BlobServiceClient.fromConnectionString(
-	STORAGE_CONNECTION_STRING,
+	AZURE_STORAGE_CONNECTION_STRING,
 	{
 		retryOptions: { maxTries: 3, tryTimeoutInMs: 30000, retryDelayInMs: 1000 },
 	},
@@ -58,19 +58,27 @@ export async function getBlobProperties(container: string, blobPath: string) {
 		return result;
 	} catch (err) {
 		if (err instanceof Error) {
-			logger.error("Error in getBlobProperties", {
-				container,
-				blobPath,
-				error: err.message,
-			});
+			logger.error(
+				{
+					container,
+					blobPath,
+					error: err.message,
+				},
+				"Error in getBlobProperties",
+			);
 		} else {
-			logger.error("Unknown error in getBlobProperties", {
-				container,
-				blobPath,
-				error: String(err),
-			});
+			logger.error(
+				{
+					container,
+					blobPath,
+					error: String(err),
+				},
+				"Unknown error in getBlobProperties",
+			);
 		}
-		throw err;
+		return new Error(
+			`Failed to get blob properties for ${container}/${blobPath}`,
+		);
 	}
 }
 

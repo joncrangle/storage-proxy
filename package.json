@@ -1,7 +1,7 @@
 {
 	"name": "storage-proxy",
 	"version": "0.0.1",
-	"description": "Authenticated proxy for Azure Blob Storage or AWS S3 Buckets with Entra ID",
+	"description": "Authenticated proxy for Azure Blob Storage or AWS S3 Buckets with Microsoft Entra ID",
 	"license": "MIT",
 	"repository": {
 		"type": "git",
@@ -10,10 +10,10 @@
 	"type": "module",
 	"scripts": {
 		"build": "tsc --project tsconfig.json",
-		"start": "bun run build && NODE_ENV=production bun run ./dist/src/app.js",
+		"start": "bun run build && NODE_ENV=production bun ./dist/src/app.js",
 		"dev:services": "concurrently -n AZ,MOTO -c magenta,cyan \"bun run azurite\" \"bun run moto\" || true",
 		"dev:wait": "wait-on tcp:10000 tcp:4566",
-		"dev:nodemon": "bun run --hot src/app.ts",
+		"dev:nodemon": "bun run --hot ./src/app.ts",
 		"dev": "concurrently -n SERVICES,WAIT,NODE -c yellow,gray,green -k \"bun run dev:services\" \"bun run dev:wait && bun run dev:nodemon\"",
 		"lint": "biome lint --write ./src",
 		"format": "biome format --write ./src",
@@ -22,25 +22,33 @@
 		"test": "concurrently --success=first --kill-others -n SERVICES,WAIT,NODE -c yellow,gray,green \"bun run dev:services\" \"bun run dev:wait && bun test tests/app.test.ts\""
 	},
 	"dependencies": {
-		"@aws-sdk/client-s3": "^3.842.0",
-		"@azure/msal-node": "^3.6.2",
+		"@aws-sdk/client-s3": "^3.844.0",
 		"@azure/storage-blob": "^12.27.0",
-		"jsonwebtoken": "^9.0.2",
+		"@hono/zod-validator": "^0.7.0",
+		"@scalar/hono-api-reference": "^0.9.10",
+		"better-auth": "^1.2.12",
+		"better-sqlite3": "^12.2.0",
+		"drizzle-orm": "^0.44.2",
 		"hono": "^4.8.4",
-		"jwks-rsa": "^3.2.0",
-		"redis": "^5.5.6"
+		"hono-openapi": "^0.4.8",
+		"hono-rate-limiter": "^0.4.2",
+		"lru-cache": "^11.1.0",
+		"pino": "^9.7.0",
+		"pino-pretty": "^13.0.0",
+		"zod-openapi": "^5.1.0"
 	},
 	"peerDependencies": {
 		"typescript": "^5.8.3"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "^2.0.6",
-		"@types/bun": "latest",
+		"@biomejs/biome": "^2.1.1",
+		"@types/bun": "^1.2.18",
 		"@types/jsonwebtoken": "^9.0.10",
 		"azurite": "^3.34.0",
 		"concurrently": "^9.2.0",
+		"drizzle-kit": "^0.31.4",
 		"nodemon": "^3.1.10",
 		"wait-on": "^8.0.3",
-		"zod": "^3.25.74"
+		"zod": "^4.0.5"
 	}
 }

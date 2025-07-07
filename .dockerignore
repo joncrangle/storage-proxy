@@ -6,7 +6,5 @@ tests/
 .git
 .gitignore
 biome.json
-vitest.config.ts
 Dockerfile
 README.md
-

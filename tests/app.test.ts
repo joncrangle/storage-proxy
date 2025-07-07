@@ -1,6 +1,3 @@
-import type { Server } from "node:http";
-import type { Application, NextFunction, Response } from "express";
-import request from "supertest";
 import {
 	afterAll,
 	afterEach,
@@ -8,15 +5,18 @@ import {
 	describe,
 	expect,
 	it,
-	vi,
-} from "vitest";
-import type { CustomRequest } from "@/types";
+	mock,
+} from "bun:test";
+import type { Server } from "bun";
+import type { Context, Next } from "hono";
 
 async function setupAppForProvider(
 	provider: "azure" | "s3",
 	authType: "auth" | "unauth",
 ) {
-	vi.resetModules();
+	// Clear module cache - Bun equivalent of vi.resetModules()
+	delete require.cache[require.resolve("../src/app.js")];
+	delete require.cache[require.resolve("../src/middleware/auth.js")];
 
 	// Set environment first
 	process.env = {
@@ -38,43 +38,42 @@ async function setupAppForProvider(
 		SESSION_SECRET: "session-secret",
 	};
 
-	// Setup auth mocking
-	vi.doMock("../src/middleware/auth.js", async () => {
-		const actual = await vi.importActual("../src/middleware/auth.js");
-		const mockCca = {
-			getAuthCodeUrl: vi.fn().mockResolvedValue("https://mock-url"),
-			acquireTokenByCode: vi.fn().mockResolvedValue({
-				account: {
-					homeAccountId: "mock-id",
-					username: "mock@example.com",
-					name: "Mock User",
-					tenantId: "mock-tenant",
-				},
-			}),
-		};
+	// Setup auth mocking using Bun's mock system
+	const mockCca = {
+		getAuthCodeUrl: mock().mockResolvedValue("https://mock-url"),
+		acquireTokenByCode: mock().mockResolvedValue({
+			account: {
+				homeAccountId: "mock-id",
+				username: "mock@example.com",
+				name: "Mock User",
+				tenantId: "mock-tenant",
+			},
+		}),
+	};
 
-		return {
-			...actual,
-			getCCA: () => mockCca,
-			requireAuth: [
-				(req: CustomRequest, _res: Response, next: NextFunction) => {
-					if (authType === "auth") {
-						req.session = req.session || {};
-						req.session.user = {
-							id: "mock-id",
-							email: "mock@example.com",
-							name: "Mock User",
-							tenantId: "mock-tenant",
-						};
-					}
-					next();
-				},
-			],
-		};
-	});
+	// Mock the auth module
+	mock.module("../src/middleware/auth.js", () => ({
+		getCCA: () => mockCca,
+		requireAuth: (c: Context, next: Next) => {
+			if (authType === "auth") {
+				c.set("user", {
+					id: "mock-id",
+					email: "mock@example.com",
+					name: "Mock User",
+				});
+			}
+			return next();
+		},
+	}));
 
 	const { default: app } = await import("../src/app.js");
-	return app.listen(0);
+
+	const server = Bun.serve({
+		port: 3000,
+		fetch: app.fetch,
+	});
+
+	return server;
 }
 
 describe.each(["azure", "s3"])("%s storage provider", (provider) => {
@@ -89,126 +88,136 @@ describe.each(["azure", "s3"])("%s storage provider", (provider) => {
 		});
 
 		afterAll(() => {
-			server?.close();
+			server?.stop();
 		});
 
 		it("should return app status at /", async () => {
-			const res = await request(server).get("/");
+			const res = await fetch(`http://localhost:${server.port}/`);
 			expect(res.status).toBe(200);
-			expect(res.body).toHaveProperty("name");
-			expect(res.body).toHaveProperty("status", "running");
+			const body = await res.json();
+			expect(body).toHaveProperty("name");
+			expect(body).toHaveProperty("status", "running");
 		});
 
 		it("should serve Swagger UI", async () => {
-			const res = await request(server).get("/api/");
+			const res = await fetch(`http://localhost:${server.port}/api/`);
 			expect(res.status).toBe(200);
-			expect(res.text).toContain("Swagger UI");
+			const text = await res.text();
+			expect(text).toContain("Swagger UI");
 		});
 
 		describe("Proxy Server", () => {
 			it("should return 404 for unknown routes", async () => {
-				const res = await request(server).get("/nonexistent");
+				const res = await fetch(`http://localhost:${server.port}/nonexistent`);
 				expect(res.status).toBe(404);
-				expect(res.body.error).toBe("Not Found");
+				const body = await res.json();
+				expect(body.error).toBe("Not Found");
 			});
 
 			it("should serve Swagger UI at /api/", async () => {
-				const res = await request(server).get("/api/");
+				const res = await fetch(`http://localhost:${server.port}/api/`);
 				expect(res.status).toBe(200);
-				expect(res.text).toContain("Swagger UI");
+				const text = await res.text();
+				expect(text).toContain("Swagger UI");
 			});
 
 			it("should return app status at /", async () => {
-				const res = await request(server).get("/");
+				const res = await fetch(`http://localhost:${server.port}/`);
 				expect(res.status).toBe(200);
-				expect(res.body).toHaveProperty("name", "Azure Blob Storage Proxy");
-				expect(res.body).toHaveProperty("status", "running");
-				expect(res.body).toHaveProperty("endpoints");
-				expect(res.body).toHaveProperty("requestId");
+				const body = await res.json();
+				expect(body).toHaveProperty("name", "Azure Blob Storage Proxy");
+				expect(body).toHaveProperty("status", "running");
+				expect(body).toHaveProperty("endpoints");
+				expect(body).toHaveProperty("requestId");
 			});
 
 			it("should return health status at /health", async () => {
-				const res = await request(server).get("/health");
+				const res = await fetch(`http://localhost:${server.port}/health`);
 				expect([200, 503]).toContain(res.status); // healthy or degraded
-				expect(res.body).toHaveProperty("status");
-				expect(["azure", "s3"]).toContain(res.body.storage.provider);
-				expect(res.body).toHaveProperty("requestId");
+				const body = await res.json();
+				expect(body).toHaveProperty("status");
+				expect(["azure", "s3"]).toContain(body.storage.provider);
+				expect(body).toHaveProperty("requestId");
 			});
 		});
 
 		describe("Microsoft Entra ID Auth Routes", () => {
 			it("should redirect to Microsoft login on /auth/login", async () => {
-				const res = await request(server).get("/auth/login");
+				const res = await fetch(`http://localhost:${server.port}/auth/login`, {
+					redirect: "manual",
+				});
 				expect([302, 500]).toContain(res.status);
 			});
 
 			it("should return 400 if callback is missing code", async () => {
-				const res = await request(server).get("/auth/callback");
+				const res = await fetch(
+					`http://localhost:${server.port}/auth/callback`,
+				);
 				expect(res.status).toBe(400);
 			});
 
 			it("should redirect to Microsoft logout on /auth/logout", async () => {
-				const res = await request(server).get("/auth/logout");
+				const res = await fetch(`http://localhost:${server.port}/auth/logout`, {
+					redirect: "manual",
+				});
 				expect([302, 500]).toContain(res.status);
 			});
 		});
 
 		describe("Unauthenticated user", () => {
-			let unauthenticatedApp: Application;
 			let unauthenticatedServer: Server;
 
 			beforeAll(async () => {
-				vi.resetModules();
+				// Clear module cache
+				delete require.cache[require.resolve("../src/app.js")];
+				delete require.cache[require.resolve("../src/middleware/auth.js")];
 
-				vi.doMock("../src/middleware/auth.js", async () => {
-					const actual = await vi.importActual("../src/middleware/auth.js");
-					return {
-						...actual,
-						cca: {
-							getAuthCodeUrl: vi
-								.fn()
-								.mockResolvedValue(
-									"https://login.microsoftonline.com/mock-auth-url",
-								),
-							acquireTokenByCode: vi.fn().mockResolvedValue({
-								account: {
-									homeAccountId: "mock-home-id",
-									username: "mockuser@example.com",
-									name: "Mock User",
-									tenantId: "mock-tenant-id",
-								},
-							}),
-						},
-					};
+				// Mock auth for unauthenticated state
+				mock.module("../src/middleware/auth.js", () => ({
+					cca: {
+						getAuthCodeUrl: mock().mockResolvedValue(
+							"https://login.microsoftonline.com/mock-auth-url",
+						),
+						acquireTokenByCode: mock().mockResolvedValue({
+							account: {
+								homeAccountId: "mock-home-id",
+								username: "mockuser@example.com",
+								name: "Mock User",
+								tenantId: "mock-tenant-id",
+							},
+						}),
+					},
+				}));
+
+				const { default: app } = await import("../src/app.js");
+				unauthenticatedServer = Bun.serve({
+					port: 0,
+					fetch: app.fetch,
 				});
-
-				const { default: newApp } = await import("../src/app.js");
-				unauthenticatedApp = newApp;
-				unauthenticatedServer = unauthenticatedApp.listen(0);
 			});
 
 			afterAll(() => {
-				unauthenticatedServer?.close();
+				unauthenticatedServer?.stop();
 			});
 
 			describe("File endpoints", () => {
 				it("should require authentication for file download", async () => {
-					const res = await request(unauthenticatedServer).get(
-						"/v1/files/download/test-container/sastestblob.txt",
+					const res = await fetch(
+						`http://localhost:${unauthenticatedServer.port}/v1/files/download/test-container/sastestblob.txt`,
 					);
 					expect([401, 403]).toContain(res.status);
 				});
 
 				it("should require authentication for file view", async () => {
-					const res = await request(unauthenticatedServer).get(
-						"/v1/files/test-container/sastestblob.txt",
+					const res = await fetch(
+						`http://localhost:${unauthenticatedServer.port}/v1/files/test-container/sastestblob.txt`,
 					);
 					expect([401, 403]).toContain(res.status);
 				});
 
 				it("should require authentication to list containers and blobs", async () => {
-					const res = await request(unauthenticatedServer).get(
-						"/v1/files/list",
+					const res = await fetch(
+						`http://localhost:${unauthenticatedServer.port}/v1/files/list`,
 					);
 					expect([401, 403]).toContain(res.status);
 				});
@@ -216,78 +225,80 @@ describe.each(["azure", "s3"])("%s storage provider", (provider) => {
 
 			describe("Metrics endpoints", () => {
 				it("should require authentication for top-files endpoint", async () => {
-					const res = await request(unauthenticatedServer).get(
-						"/v1/metrics/top-files",
+					const res = await fetch(
+						`http://localhost:${unauthenticatedServer.port}/v1/metrics/top-files`,
 					);
 					expect([401, 403]).toContain(res.status);
 				});
 
 				it("should require authentication for containers endpoint", async () => {
-					const res = await request(unauthenticatedServer).get(
-						"/v1/metrics/containers",
+					const res = await fetch(
+						`http://localhost:${unauthenticatedServer.port}/v1/metrics/containers`,
 					);
 					expect([401, 403]).toContain(res.status);
 				});
 
 				it("should require authentication for summary endpoint", async () => {
-					const res = await request(unauthenticatedServer).get(
-						"/v1/metrics/summary",
+					const res = await fetch(
+						`http://localhost:${unauthenticatedServer.port}/v1/metrics/summary`,
 					);
 					expect([401, 403]).toContain(res.status);
 				});
 
 				it("should require authentication for range endpoint", async () => {
-					const res = await request(unauthenticatedServer).get(
-						"/v1/metrics/range?startDate=2025-06-18",
+					const res = await fetch(
+						`http://localhost:${unauthenticatedServer.port}/v1/metrics/range?startDate=2025-06-18`,
 					);
 					expect([401, 403]).toContain(res.status);
 				});
 
 				it("should require authentication for container top-files endpoint", async () => {
-					const res = await request(unauthenticatedServer).get(
-						"/v1/metrics/test-container/top-files",
+					const res = await fetch(
+						`http://localhost:${unauthenticatedServer.port}/v1/metrics/test-container/top-files`,
 					);
 					expect([401, 403]).toContain(res.status);
 				});
 
 				it("should require authentication for container files endpoints", async () => {
-					const res = await request(unauthenticatedServer).get(
-						"/v1/metrics/test-container/files",
+					const res = await fetch(
+						`http://localhost:${unauthenticatedServer.port}/v1/metrics/test-container/files`,
 					);
 					expect([401, 403]).toContain(res.status);
 				});
 
 				it("should require authentication for container range endpoint", async () => {
-					const res = await request(unauthenticatedServer).get(
-						"/v1/metrics/test-container/range?startDate=2025-06-18",
+					const res = await fetch(
+						`http://localhost:${unauthenticatedServer.port}/v1/metrics/test-container/range?startDate=2025-06-18`,
 					);
 					expect([401, 403]).toContain(res.status);
 				});
 
 				it("should require authentication for container endpoint", async () => {
-					const res = await request(unauthenticatedServer).get(
-						"/v1/metrics/test-container",
+					const res = await fetch(
+						`http://localhost:${unauthenticatedServer.port}/v1/metrics/test-container`,
 					);
 					expect([401, 403]).toContain(res.status);
 				});
 
 				it("should require authentication for export endpoint", async () => {
-					const res = await request(unauthenticatedServer).get(
-						"/v1/metrics/test-container/export",
+					const res = await fetch(
+						`http://localhost:${unauthenticatedServer.port}/v1/metrics/test-container/export`,
 					);
 					expect([401, 403]).toContain(res.status);
 				});
 
 				it("should require authentication for clear endpoint", async () => {
-					const res = await request(unauthenticatedServer).post(
-						"/v1/metrics/clear",
+					const res = await fetch(
+						`http://localhost:${unauthenticatedServer.port}/v1/metrics/clear`,
+						{ method: "POST" },
 					);
 					expect([401, 403]).toContain(res.status);
 				});
 
 				it("should require authentication for persist endpoint", async () => {
-					const res = await request(unauthenticatedServer).post(
-						"/v1/metrics/persist",
+					const res = await fetch(
+						`http://localhost:${unauthenticatedServer.port}/v1/metrics/persist`,
+						{ method: "POST" },
 					);
 					expect([401, 403]).toContain(res.status);
 				});
@@ -295,82 +306,79 @@ describe.each(["azure", "s3"])("%s storage provider", (provider) => {
 		});
 
 		describe("Authenticated user", () => {
-			let authenticatedApp: Application;
 			let authenticatedServer: Server;
 
 			beforeAll(async () => {
-				vi.resetModules();
+				// Clear module cache
+				delete require.cache[require.resolve("../src/app.js")];
+				delete require.cache[require.resolve("../src/middleware/auth.js")];
 
-				vi.doMock("../src/middleware/auth.js", async () => {
-					const actual = await vi.importActual("../src/middleware/auth.js");
-					return {
-						...actual,
-						cca: {
-							getAuthCodeUrl: vi
-								.fn()
-								.mockResolvedValue(
-									"https://login.microsoftonline.com/mock-auth-url",
-								),
-							acquireTokenByCode: vi.fn().mockResolvedValue({
-								account: {
-									homeAccountId: "mock-home-id",
-									username: "mockuser@example.com",
-									name: "Mock User",
-									tenantId: "mock-tenant-id",
-								},
-							}),
-						},
-						// Simulate authenticated user
-						requireAuth: [
-							(req: CustomRequest, _res: Response, next: NextFunction) => {
-								req.session = req.session || {};
-								req.session.user = {
-									id: "mock-home-id",
-									email: "mockuser@example.com",
-									name: "Mock User",
-									tenantId: "mock-tenant-id",
-								};
-								next();
+				// Mock auth for authenticated state
+				mock.module("../src/middleware/auth.js", () => ({
+					cca: {
+						getAuthCodeUrl: mock().mockResolvedValue(
+							"https://login.microsoftonline.com/mock-auth-url",
+						),
+						acquireTokenByCode: mock().mockResolvedValue({
+							account: {
+								homeAccountId: "mock-home-id",
+								username: "mockuser@example.com",
+								name: "Mock User",
+								tenantId: "mock-tenant-id",
 							},
-						],
-					};
-				});
+						}),
+					},
+					// Simulate authenticated user
+					requireAuth: (c: Context, next: Next) => {
+						c.set("user", {
+							id: "mock-home-id",
+							email: "mockuser@example.com",
+							name: "Mock User",
+						});
+						return next();
+					},
+				}));
 
-				const { default: newApp } = await import("../src/app.js");
-				authenticatedApp = newApp;
-				authenticatedServer = authenticatedApp.listen(0);
+				const { default: app } = await import("../src/app.js");
+				authenticatedServer = Bun.serve({
+					port: 0,
+					fetch: app.fetch,
+				});
 			});
 
 			afterAll(() => {
-				authenticatedServer?.close();
+				authenticatedServer?.stop();
 			});
 
 			describe("File endpoints", () => {
 				it("should allow access to file view when authenticated", async () => {
-					const res = await request(authenticatedServer).get(
-						"/v1/files/test-container/sastestblob.txt",
+					const res = await fetch(
+						`http://localhost:${authenticatedServer.port}/v1/files/test-container/sastestblob.txt`,
 					);
 					expect(res.status).toBe(200);
-					expect(res.text || (res.body?.toString?.() ?? "")).toContain(
-						"Hello from",
-					);
+					const text = await res.text();
+					expect(text).toContain("Hello from");
 				});
 
 				it("should allow access to file download when authenticated", async () => {
-					const res = await request(authenticatedServer).get(
-						"/v1/files/download/test-container/sastestblob.txt",
+					const res = await fetch(
+						`http://localhost:${authenticatedServer.port}/v1/files/download/test-container/sastestblob.txt`,
 					);
 					expect(res.status).toBe(200);
-					expect(res.body.toString()).toContain("Hello from");
+					const body = await res.arrayBuffer();
+					expect(new TextDecoder().decode(body)).toContain("Hello from");
 				});
 
 				it("should allow access to list containers and blobs", async () => {
-					const res = await request(authenticatedServer).get("/v1/files/list");
+					const res = await fetch(
+						`http://localhost:${authenticatedServer.port}/v1/files/list`,
+					);
 					expect(res.status).toBe(200);
-					expect(res.body).toHaveProperty("success", true);
-					expect(res.body).toHaveProperty("containers");
-					expect(Array.isArray(res.body.containers)).toBe(true);
-					expect(res.body.containers).toEqual(
+					const body = await res.json();
+					expect(body).toHaveProperty("success", true);
+					expect(body).toHaveProperty("containers");
+					expect(Array.isArray(body.containers)).toBe(true);
+					expect(body.containers).toEqual(
 						expect.arrayContaining([
 							expect.objectContaining({
 								name: expect.any(String),
@@ -378,19 +386,20 @@ describe.each(["azure", "s3"])("%s storage provider", (provider) => {
 							}),
 						]),
 					);
-					expect(res.body).toHaveProperty("requestId");
+					expect(body).toHaveProperty("requestId");
 				});
 			});
 
 			describe("Metrics endpoints", () => {
 				it("should allow access to top-files endpoint", async () => {
-					const res = await request(authenticatedServer).get(
-						"/v1/metrics/top-files",
+					const res = await fetch(
+						`http://localhost:${authenticatedServer.port}/v1/metrics/top-files`,
 					);
 					expect(res.status).toBe(200);
-					expect(res.body).toHaveProperty("success");
-					expect(res.body).toHaveProperty("data");
-					expect(res.body.data).toEqual(
+					const body = await res.json();
+					expect(body).toHaveProperty("success");
+					expect(body).toHaveProperty("data");
+					expect(body.data).toEqual(
 						expect.arrayContaining([
 							expect.objectContaining({
 								blob: expect.any(String),
@@ -404,18 +413,19 @@ describe.each(["azure", "s3"])("%s storage provider", (provider) => {
 							}),
 						]),
 					);
-					expect(res.body).toHaveProperty("limit");
-					expect(res.body).toHaveProperty("requestId");
+					expect(body).toHaveProperty("limit");
+					expect(body).toHaveProperty("requestId");
 				});
 
 				it("should allow access to containers endpoint", async () => {
-					const res = await request(authenticatedServer).get(
-						"/v1/metrics/containers",
+					const res = await fetch(
+						`http://localhost:${authenticatedServer.port}/v1/metrics/containers`,
 					);
 					expect(res.status).toBe(200);
-					expect(res.body).toHaveProperty("success");
-					expect(res.body).toHaveProperty("data");
-					expect(res.body.data).toEqual(
+					const body = await res.json();
+					expect(body).toHaveProperty("success");
+					expect(body).toHaveProperty("data");
+					expect(body.data).toEqual(
 						expect.arrayContaining([
 							expect.objectContaining({
 								container: expect.any(String),
@@ -425,17 +435,18 @@ describe.each(["azure", "s3"])("%s storage provider", (provider) => {
 							}),
 						]),
 					);
-					expect(res.body).toHaveProperty("requestId");
+					expect(body).toHaveProperty("requestId");
 				});
 
 				it("should allow access to summary endpoint", async () => {
-					const res = await request(authenticatedServer).get(
-						"/v1/metrics/summary",
+					const res = await fetch(
+						`http://localhost:${authenticatedServer.port}/v1/metrics/summary`,
 					);
 					expect(res.status).toBe(200);
-					expect(res.body).toHaveProperty("success");
-					expect(res.body).toHaveProperty("data");
-					expect(res.body.data).toEqual(
+					const body = await res.json();
+					expect(body).toHaveProperty("success");
+					expect(body).toHaveProperty("data");
+					expect(body.data).toEqual(
 						expect.objectContaining({
 							totalFiles: expect.any(Number),
 							totalAccesses: expect.any(Number),
@@ -444,17 +455,18 @@ describe.each(["azure", "s3"])("%s storage provider", (provider) => {
 							averageAccessesPerFile: expect.any(Number),
 						}),
 					);
-					expect(res.body).toHaveProperty("requestId");
+					expect(body).toHaveProperty("requestId");
 				});
 
 				it("should allow access to range endpoint", async () => {
-					const res = await request(authenticatedServer).get(
-						"/v1/metrics/range?startDate=2025-06-18",
+					const res = await fetch(
+						`http://localhost:${authenticatedServer.port}/v1/metrics/range?startDate=2025-06-18`,
 					);
 					expect(res.status).toBe(200);
-					expect(res.body).toHaveProperty("success");
-					expect(res.body).toHaveProperty("data");
-					expect(res.body.data).toEqual(
+					const body = await res.json();
+					expect(body).toHaveProperty("success");
+					expect(body).toHaveProperty("data");
+					expect(body.data).toEqual(
 						expect.arrayContaining([
 							expect.objectContaining({
 								path: expect.any(String),
@@ -467,17 +479,18 @@ describe.each(["azure", "s3"])("%s storage provider", (provider) => {
 							}),
 						]),
 					);
-					expect(res.body).toHaveProperty("requestId");
+					expect(body).toHaveProperty("requestId");
 				});
 
 				it("should allow access to container top-files endpoint", async () => {
-					const res = await request(authenticatedServer).get(
-						"/v1/metrics/test-container/top-files",
+					const res = await fetch(
+						`http://localhost:${authenticatedServer.port}/v1/metrics/test-container/top-files`,
 					);
 					expect(res.status).toBe(200);
-					expect(res.body).toHaveProperty("success");
-					expect(res.body).toHaveProperty("data");
-					expect(res.body.data).toEqual(
+					const body = await res.json();
+					expect(body).toHaveProperty("success");
+					expect(body).toHaveProperty("data");
+					expect(body.data).toEqual(
 						expect.arrayContaining([
 							expect.objectContaining({
 								blob: expect.any(String),
@@ -491,17 +504,18 @@ describe.each(["azure", "s3"])("%s storage provider", (provider) => {
 							}),
 						]),
 					);
-					expect(res.body).toHaveProperty("requestId");
+					expect(body).toHaveProperty("requestId");
 				});
 
 				it("should allow access to container files endpoint", async () => {
-					const res = await request(authenticatedServer).get(
-						"/v1/metrics/test-container/files",
+					const res = await fetch(
+						`http://localhost:${authenticatedServer.port}/v1/metrics/test-container/files`,
 					);
 					expect(res.status).toBe(200);
-					expect(res.body).toHaveProperty("success");
-					expect(res.body).toHaveProperty("data");
-					expect(res.body.data).toEqual(
+					const body = await res.json();
+					expect(body).toHaveProperty("success");
+					expect(body).toHaveProperty("data");
+					expect(body.data).toEqual(
 						expect.arrayContaining([
 							expect.objectContaining({
 								path: expect.any(String),
@@ -514,17 +528,18 @@ describe.each(["azure", "s3"])("%s storage provider", (provider) => {
 							}),
 						]),
 					);
-					expect(res.body).toHaveProperty("requestId");
+					expect(body).toHaveProperty("requestId");
 				});
 
 				it("should allow access to container range endpoint", async () => {
-					const res = await request(authenticatedServer).get(
-						"/v1/metrics/test-container/range?startDate=2025-06-18",
+					const res = await fetch(
+						`http://localhost:${authenticatedServer.port}/v1/metrics/test-container/range?startDate=2025-06-18`,
 					);
 					expect(res.status).toBe(200);
-					expect(res.body).toHaveProperty("success");
-					expect(res.body).toHaveProperty("data");
-					expect(res.body.data).toEqual(
+					const body = await res.json();
+					expect(body).toHaveProperty("success");
+					expect(body).toHaveProperty("data");
+					expect(body.data).toEqual(
 						expect.arrayContaining([
 							expect.objectContaining({
 								path: expect.any(String),
@@ -537,17 +552,18 @@ describe.each(["azure", "s3"])("%s storage provider", (provider) => {
 							}),
 						]),
 					);
-					expect(res.body).toHaveProperty("requestId");
+					expect(body).toHaveProperty("requestId");
 				});
 
 				it("should allow access to container endpoint", async () => {
-					const res = await request(authenticatedServer).get(
-						"/v1/metrics/test-container",
+					const res = await fetch(
+						`http://localhost:${authenticatedServer.port}/v1/metrics/test-container`,
 					);
 					expect(res.status).toBe(200);
-					expect(res.body).toHaveProperty("success");
-					expect(res.body).toHaveProperty("data");
-					expect(res.body.data).toEqual(
+					const body = await res.json();
+					expect(body).toHaveProperty("success");
+					expect(body).toHaveProperty("data");
+					expect(body.data).toEqual(
 						expect.objectContaining({
 							totalFiles: expect.any(Number),
 							totalAccesses: expect.any(Number),
@@ -556,18 +572,19 @@ describe.each(["azure", "s3"])("%s storage provider", (provider) => {
 							averageAccessesPerFile: expect.any(Number),
 						}),
 					);
-					expect(res.body).toHaveProperty("requestId");
+					expect(body).toHaveProperty("requestId");
 				});
 
 				it("should allow access to metrics export endpoint", async () => {
-					const res = await request(authenticatedServer).get(
-						"/v1/metrics/test-container/export",
+					const res = await fetch(
+						`http://localhost:${authenticatedServer.port}/v1/metrics/test-container/export`,
 					);
 					expect(res.status).toBe(200);
-					expect(res.body).toHaveProperty("exportedAt");
-					expect(res.body).toHaveProperty("exportedBy");
-					expect(res.body).toHaveProperty("metrics");
-					expect(res.body.metrics).toEqual(
+					const body = await res.json();
+					expect(body).toHaveProperty("exportedAt");
+					expect(body).toHaveProperty("exportedBy");
+					expect(body).toHaveProperty("metrics");
+					expect(body.metrics).toEqual(
 						expect.arrayContaining([
 							expect.objectContaining({
 								path: expect.any(String),
@@ -589,49 +606,54 @@ describe.each(["azure", "s3"])("%s storage provider", (provider) => {
 
 					it("should prevent clearing metrics in production", async () => {
 						process.env.NODE_ENV = "production";
-						const res = await request(authenticatedServer).post(
-							"/v1/metrics?action=clear",
+						const res = await fetch(
+							`http://localhost:${authenticatedServer.port}/v1/metrics?action=clear`,
+							{ method: "POST" },
 						);
 						expect(res.status).toBe(403);
-						expect(res.body).toHaveProperty("error", "Forbidden");
-						expect(res.body).toHaveProperty(
-							"message",
-							"Not allowed in production",
-						);
-						expect(res.body).toHaveProperty("requestId");
+						const body = await res.json();
+						expect(body).toHaveProperty("error", "Forbidden");
+						expect(body).toHaveProperty("message", "Not allowed in production");
+						expect(body).toHaveProperty("requestId");
 					});
 
 					it("should allow clearing metrics in test environment", async () => {
 						process.env.NODE_ENV = "test";
-						const res = await request(authenticatedServer).post(
-							"/v1/metrics?action=clear",
+						const res = await fetch(
+							`http://localhost:${authenticatedServer.port}/v1/metrics?action=clear`,
+							{ method: "POST" },
 						);
 						expect(res.status).toBe(200);
-						expect(res.body).toHaveProperty("success", true);
-						expect(res.body).toHaveProperty("message", "Metrics cleared");
-						expect(res.body).toHaveProperty("requestId");
+						const body = await res.json();
+						expect(body).toHaveProperty("success", true);
+						expect(body).toHaveProperty("message", "Metrics cleared");
+						expect(body).toHaveProperty("requestId");
 					});
 
 					it("should persist metrics in test environment", async () => {
 						process.env.NODE_ENV = "test";
-						const res = await request(authenticatedServer).post(
-							"/v1/metrics?action=persist",
+						const res = await fetch(
+							`http://localhost:${authenticatedServer.port}/v1/metrics?action=persist`,
+							{ method: "POST" },
 						);
 						expect(res.status).toBe(200);
-						expect(res.body).toHaveProperty("success", true);
-						expect(res.body).toHaveProperty("message", "Metrics persisted");
-						expect(res.body).toHaveProperty("requestId");
+						const body = await res.json();
+						expect(body).toHaveProperty("success", true);
+						expect(body).toHaveProperty("message", "Metrics persisted");
+						expect(body).toHaveProperty("requestId");
 					});
 
 					it("should persist metrics in production environment", async () => {
 						process.env.NODE_ENV = "production";
-						const res = await request(authenticatedServer).post(
-							"/v1/metrics?action=persist",
+						const res = await fetch(
+							`http://localhost:${authenticatedServer.port}/v1/metrics?action=persist`,
+							{ method: "POST" },
 						);
 						expect(res.status).toBe(200);
-						expect(res.body).toHaveProperty("success", true);
-						expect(res.body).toHaveProperty("message", "Metrics persisted");
-						expect(res.body).toHaveProperty("requestId");
+						const body = await res.json();
+						expect(body).toHaveProperty("success", true);
+						expect(body).toHaveProperty("message", "Metrics persisted");
+						expect(body).toHaveProperty("requestId");
 					});
 				});
 			});

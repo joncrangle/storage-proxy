@@ -1,110 +1,56 @@
-import { type Response, Router } from "express";
-import { config } from "@/config";
-import authRoutes from "@/routes/auth";
-import fileRoutes from "@/routes/files";
-import metricsRoutes from "@/routes/metrics";
-import { logger } from "@/services/logger";
-import { listContainersAndBlobs } from "@/services/storage";
-import type { ContainerInfo, CustomRequest } from "@/types";
+import { Scalar } from "@scalar/hono-api-reference";
+import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
+import { describeRoute, openAPISpecs } from "hono-openapi";
+import { ENTRA, LOG_LEVEL, NODE_ENV, STORAGE_PROVIDER } from "../config";
+import fileRoutes from "../routes/files";
+import metricsRoutes from "../routes/metrics";
+import { logger } from "../services/logger";
+import { listContainersAndBlobs } from "../services/storage";
+import type { ContainerInfo } from "../services/storage.schemas";
+import { healthAPI, homeAPI } from "./index.schemas";
 
-const router: Router = Router();
+const app = new Hono();
 
-// @ts-ignore
-router.get("/favicon.ico", (_req, res) => res.status(204).end());
+app.get("/favicon.ico", (c) => c.body(null, 204));
 
-/**
- * @openapi
- * tags:
- *   - name: default
- *     description: Base API endpoints
- */
-
-// Mount the specific routers
-router.use("/auth", authRoutes);
-router.use("/v1/files", fileRoutes);
-router.use("/v1/metrics", metricsRoutes);
+// Mount file and metrics routes
+app.route("/v1/files", fileRoutes);
+app.route("/v1/metrics", metricsRoutes);
 
 /**
- * @openapi
- * /:
- *   get:
- *     summary: Returns the current status of the app
- *     description: Provides basic info about the app status and available endpoints.
- *     responses:
- *       200:
- *         description: Application status info
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 name:
- *                   type: string
- *                 status:
- *                   type: string
- *                 environment:
- *                   type: string
- *                 authenticated:
- *                   type: boolean
- *                 user:
- *                   type: object
- *                   nullable: true
- *                   properties:
- *                     email:
- *                       type: string
- *                     name:
- *                       type: string
- *                 endpoints:
- *                   type: object
- *                   additionalProperties:
- *                     type: string
- *                 requestId:
- *                   type: string
+ * Base route
  */
-router.get("/", (req: CustomRequest, res: Response) => {
-	const user = req.session.user;
-	res.json({
+app.get("/", describeRoute(homeAPI), async (c) => {
+	const user = c.get("user");
+	return c.json({
 		name: "Azure Blob Storage Proxy",
 		status: "running",
-		environment: config.NODE_ENV,
+		environment: NODE_ENV,
+		logging: LOG_LEVEL,
 		authenticated: !!user,
 		user: user ? { email: user.email, name: user.name } : null,
-		endpoints: {
-			api: "/api",
-			health: "/health",
-		},
-		requestId: req.id,
+		requestId: c.get("requestId"),
 	});
 });
 
 /**
- * @openapi
- * /health:
- *   get:
- *     summary: Check system health
- *     description: Returns uptime, environment, and Azure blob container status.
- *     responses:
- *       200:
- *         description: Healthy
- *       503:
- *         description: Degraded or unhealthy
+ * Health route
  */
-router.get("/health", async (req: CustomRequest, res: Response) => {
+app.get("/health", describeRoute(healthAPI), async (c) => {
 	const healthcheck = {
 		status: "healthy",
 		timestamp: new Date().toISOString(),
 		uptime: process.uptime(),
-		requestId: req.id,
-		version: process.env.npm_package_version ?? "unknown",
-		environment: config.NODE_ENV,
+		requestId: c.get("requestId"),
+		environment: NODE_ENV,
 		storage: {
-			provider: config.STORAGE_PROVIDER,
+			provider: STORAGE_PROVIDER,
 			status: "unknown",
 			containers: [] as ContainerInfo[],
 			error: "",
 		},
 	};
-
 	try {
 		let anyContainerError = false;
 
@@ -132,16 +78,168 @@ router.get("/health", async (req: CustomRequest, res: Response) => {
 		}
 	} catch (err) {
 		const message = err instanceof Error ? err.message : String(err);
-		logger.error("Health check failed to connect to storage provider", {
-			error: message,
-		});
+		logger.error(
+			{
+				error: message,
+			},
+			"Health check failed to connect to storage provider",
+		);
 		healthcheck.status = "degraded";
 		healthcheck.storage.status = "error";
 		healthcheck.storage.error = message;
 	}
 
-	const statusCode = healthcheck.status === "healthy" ? 200 : 503;
-	res.status(statusCode).json(healthcheck);
+	c.status(healthcheck.status === "healthy" ? 200 : 503);
+	return c.json(healthcheck);
 });
 
-export default router;
+/**
+ * Serve generated openapi spec
+ */
+app.get(
+	"/openapi",
+	openAPISpecs(app, {
+		documentation: {
+			info: {
+				title: "Azure / S3 Proxy Service API",
+				version: "1.0.0",
+				description:
+					"Authenticated proxy service for Azure Blob Storage and S3",
+			},
+			components: {
+				securitySchemes: {
+					azureOAuth: {
+						type: "oauth2",
+						flows: {
+							authorizationCode: {
+								authorizationUrl: `https://login.microsoftonline.com/${ENTRA.TENANT_ID}/oauth2/v2.0/authorize`,
+								tokenUrl: `https://login.microsoftonline.com/${ENTRA.TENANT_ID}/oauth2/v2.0/token`,
+								scopes: {
+									openid: "Sign in",
+									profile: "View your profile",
+									email: "View your email address",
+								},
+							},
+						},
+					},
+				},
+			},
+			security: [{ azureOAuth: [] }],
+			servers: [
+				{
+					url: "http://localhost:3000",
+					description: "Local server",
+				},
+			],
+		},
+	}),
+);
+
+/**
+ * Serve Scalar documentation site
+ */
+app.get(
+	"/docs",
+	Scalar({
+		theme: "saturn",
+		url: "/openapi",
+		defaultOpenAllTags: true,
+		tagsSorter: "alpha",
+		authentication: {
+			preferredSecurityScheme: "azureOAuth",
+			securitySchemes: {
+				azureOAuth: {
+					flows: {
+						authorizationCode: {
+							"x-scalar-client-id": ENTRA.CLIENT_ID,
+							clientSecret:
+								NODE_ENV === "development" ? ENTRA.CLIENT_SECRET : "",
+							"x-scalar-redirect-uri": "http://localhost:3000/auth/callback",
+							selectedScopes: ["openid", "profile", "email"],
+						},
+					},
+				},
+			},
+		},
+	}),
+);
+
+/**
+ * Global error handlers
+ */
+app.onError((err, c) => {
+	const requestId = c.get("requestId");
+	const user = c.get("user");
+	const userId = user?.id;
+
+	logger.error(
+		{
+			requestId,
+			userId,
+			error: err.message,
+			stack: err.stack,
+			path: c.req.url,
+			method: c.req.method,
+		},
+		"Unhandled error",
+	);
+
+	if (err instanceof HTTPException && err.status === 401) {
+		return c.json(
+			{
+				error: "Unauthorized",
+				message: err.message ?? "Authentication required.",
+				requestId,
+			},
+			401,
+		);
+	}
+
+	if (err instanceof HTTPException && err.status === 403) {
+		return c.json(
+			{
+				error: "Forbidden",
+				message: err.message ?? "Access denied.",
+				requestId,
+			},
+			403,
+		);
+	}
+
+	return c.json(
+		{
+			error: "Internal Server Error",
+			message: err.message ?? "Something went wrong.",
+			requestId,
+		},
+		500,
+	);
+});
+
+app.notFound((c) => {
+	const path = c.req.path;
+	const method = c.req.method;
+	const requestId = c.get("requestId");
+	const user = c.get("user");
+
+	logger.warn(
+		{
+			path,
+			method,
+			requestId: typeof requestId === "string" ? requestId : undefined,
+			userId: user?.id || undefined,
+		},
+		"Route not found",
+	);
+
+	return c.json(
+		{
+			error: "Not Found",
+			message: "The requested resource was not found.",
+			requestId,
+		},
+		404,
+	);
+});
+
+export default app;

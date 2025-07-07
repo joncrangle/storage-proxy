@@ -20,10 +20,13 @@ pnpm-debug.log*
 *.so
 *.dylib
 
+# Database files
+*.db
+*.sqlite
+
 # IDE specific files
 .vscode
 .idea
 
 # Azurite logs and storage
 AzuriteConfig/
-metrics/

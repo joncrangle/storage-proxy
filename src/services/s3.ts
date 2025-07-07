@@ -5,13 +5,13 @@ import {
 	S3Client,
 	S3ServiceException,
 } from "@aws-sdk/client-s3";
-import { config } from "@/config";
-import { logger } from "@/services/logger";
+import { AWS, NODE_ENV, STORAGE_PROVIDER } from "../config";
+import { logger } from "../services/logger";
 
 let s3: S3Client;
 if (
-	(config.NODE_ENV === "development" || config.NODE_ENV === "test") &&
-	config.STORAGE_PROVIDER === "s3"
+	(NODE_ENV === "development" || NODE_ENV === "test") &&
+	STORAGE_PROVIDER === "s3"
 ) {
 	s3 = new S3Client({
 		region: "your-aws-region-here",
@@ -23,11 +23,20 @@ if (
 		},
 	});
 } else {
+	if (
+		!AWS.ACCESS_KEY_ID ||
+		!AWS.SECRET_ACCESS_KEY ||
+		!AWS.REGION ||
+		!AWS.S3_BUCKET
+	) {
+		logger.error("AWS credentials or region are missing.");
+		process.exit(1);
+	}
 	s3 = new S3Client({
-		region: config.AWS_REGION ?? "",
+		region: AWS.REGION,
 		credentials: {
-			accessKeyId: config.AWS_ACCESS_KEY_ID ?? "",
-			secretAccessKey: config.AWS_SECRET_ACCESS_KEY ?? "",
+			accessKeyId: AWS.ACCESS_KEY_ID,
+			secretAccessKey: AWS.SECRET_ACCESS_KEY,
 		},
 	});
 }
@@ -55,16 +64,19 @@ export async function getBlobProperties(container: string, blobPath: string) {
 			err instanceof S3ServiceException &&
 			err.$metadata?.httpStatusCode === 404
 		) {
-			return { exists: false };
+			return new Error(`Blob does not exist: ${blobPath}`);
 		}
 
 		const message = err instanceof Error ? err.message : String(err);
-		logger.error("Error in getBlobProperties", {
-			container,
-			blobPath,
-			error: message,
-		});
-		throw new Error(`Failed to get blob properties: ${message}`);
+		logger.error(
+			{
+				container,
+				blobPath,
+				error: message,
+			},
+			"Error in getBlobProperties",
+		);
+		return new Error(`Failed to get blob properties: ${message}`);
 	}
 }
 
@@ -82,12 +94,15 @@ export async function downloadBlob(container: string, blobPath: string) {
 		return { readableStreamBody: res.Body };
 	} catch (err) {
 		const message = err instanceof Error ? err.message : String(err);
-		logger.error("Error in downloadBlob", {
-			container,
-			blobPath,
-			error: message,
-		});
-		throw err;
+		logger.error(
+			{
+				container,
+				blobPath,
+				error: message,
+			},
+			"Error in downloadBlob",
+		);
+		return new Error(`Failed to download blob: ${message}`);
 	}
 }
 
@@ -95,14 +110,8 @@ export async function downloadBlob(container: string, blobPath: string) {
  * Lists all blobs (objects) in the configured S3 bucket.
  */
 export async function listContainersAndBlobs() {
+	const Bucket = AWS.S3_BUCKET ?? "";
 	try {
-		const Bucket = config.AWS_S3_BUCKET;
-
-		if (!Bucket) {
-			logger.error("AWS_S3_BUCKET not configured");
-			throw new Error("AWS_S3_BUCKET not configured");
-		}
-
 		const blobs = [];
 		let ContinuationToken: string | undefined;
 
@@ -147,13 +156,24 @@ export async function listContainersAndBlobs() {
 					];
 				}
 
-				logger.error("Unexpected error while listing objects", {
-					bucket: Bucket,
-					error:
-						listError instanceof Error ? listError.message : String(listError),
-				});
+				const message =
+					listError instanceof Error ? listError.message : String(listError);
 
-				throw listError;
+				logger.error(
+					{
+						bucket: Bucket,
+						error: message,
+					},
+					"Unexpected error while listing objects",
+				);
+
+				return [
+					{
+						name: Bucket,
+						blobs: [],
+						error: `Failed to list blobs: ${message}`,
+					},
+				];
 			}
 		} while (ContinuationToken);
 
@@ -161,14 +181,17 @@ export async function listContainersAndBlobs() {
 	} catch (err: unknown) {
 		const message = err instanceof Error ? err.message : String(err);
 
-		logger.error("Error in listContainersAndBlobs", {
-			error: message,
-			bucket: config.AWS_S3_BUCKET,
-		});
+		logger.error(
+			{
+				error: message,
+				bucket: AWS.S3_BUCKET,
+			},
+			"Error in listContainersAndBlobs",
+		);
 
 		return [
 			{
-				name: config.AWS_S3_BUCKET || "unknown",
+				name: AWS.S3_BUCKET || "unknown",
 				blobs: [],
 				error: message,
 			},

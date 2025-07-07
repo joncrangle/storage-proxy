@@ -1,7 +1,81 @@
 import path from "node:path";
-import { z } from "zod";
+import type { GetObjectCommandOutput } from "@aws-sdk/client-s3";
+import type { BlobDownloadResponseModel } from "@azure/storage-blob";
+import * as z from "zod";
 
-export const allowedExtensions = [
+/**
+ * Interfaces
+ */
+export interface StorageImpl {
+	getBlobProperties(
+		container: string,
+		blobPath: string,
+	): Promise<StorageBlobProperties | Error>;
+
+	downloadBlob(
+		container: string,
+		blobPath: string,
+	): Promise<BlobDownloadResponse | Error>;
+
+	listContainersAndBlobs(): ContainersAndBlobs;
+}
+
+/**
+ * Types
+ */
+export type ContainerName = z.infer<typeof containerNameSchema>;
+export type Filename = z.infer<typeof filenameSchema>;
+export type FileContent = z.infer<typeof fileContentSchema>;
+export type BlobProperties = z.infer<typeof BlobPropertiesSchema>;
+export type StorageBlobProperties = {
+	exists: boolean;
+} & Partial<BlobProperties>;
+export type ContainerInfo = z.infer<typeof ContainerInfoSchema>;
+export type ContainersAndBlobs = Promise<ContainerInfo[]>;
+export type BlobDownloadResponse =
+	| { readableStreamBody: GetObjectCommandOutput["Body"] } // S3 format
+	| BlobDownloadResponseModel; // Azure format
+
+/**
+ * Schemas
+ */
+export const blobInfoSchema = z.object({
+	name: z.string().optional(),
+	properties: z.object({
+		contentLength: z.number().optional(),
+		lastModified: z.date().optional(),
+		etag: z.string().optional(),
+		contentType: z.string().optional(),
+	}),
+});
+
+const BlobPropertiesSchema = z.object({
+	contentLength: z.number().optional(),
+	lastModified: z.date().optional(),
+	etag: z.string().optional(),
+	contentType: z.string().optional(),
+});
+
+const BlobInfoSchema = z.object({
+	name: z.string().optional(),
+	properties: BlobPropertiesSchema,
+});
+
+export const ContainerInfoSchema = z.object({
+	name: z.string(),
+	status: z.string().optional(),
+	blobs: z.array(BlobInfoSchema).optional(),
+	error: z.string().optional(),
+});
+
+export const containerInfoSchema = z.object({
+	name: z.string(),
+	status: z.string().optional(),
+	blobs: z.array(blobInfoSchema).optional(),
+	error: z.string().optional(),
+});
+
+const allowedExtensions = [
 	".txt",
 	".pdf",
 	".jpg",
@@ -110,42 +184,3 @@ export const fileContentSchema = z
 			path: ["contentType"],
 		},
 	);
-
-export const fileRouteSchema = z
-	.object({
-		container: containerNameSchema,
-		// Expect `blob` to be an array of one or more strings
-		blob: z.array(z.string()).min(1, "Blob path cannot be empty."),
-	})
-	.transform((data) => {
-		// Transform the blob array into a single, URL-decoded path string
-		const blobPath = data.blob
-			.map((segment) => decodeURIComponent(segment))
-			.join("/");
-
-		filenameSchema.parse(blobPath);
-
-		return {
-			container: data.container,
-			blob: blobPath,
-		};
-	});
-
-export const jwtUserSchema = z.object({
-	id: z.string(),
-	email: z.string().email(),
-	name: z.string(),
-	tenantId: z.string(),
-	appId: z.string().optional(),
-	roles: z.array(z.string()).default([]),
-	scopes: z.array(z.string()).default([]),
-	isServicePrincipal: z.boolean().default(false),
-	appDisplayName: z.string().optional(),
-});
-
-export const sessionUserSchema = z.object({
-	id: z.string(),
-	email: z.string().email(),
-	name: z.string(),
-	tenantId: z.string(),
-});

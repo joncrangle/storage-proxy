@@ -1,446 +1,203 @@
-import { type NextFunction, type Response, Router } from "express";
+import { zValidator } from "@hono/zod-validator";
+import { type Context, Hono, type Next } from "hono";
+import { describeRoute } from "hono-openapi";
+import { requireAuth } from "../middleware/auth";
+import { logger } from "../services/logger";
+import { metricsCollector } from "../services/metrics";
 import {
-	getCurrentUser,
-	requireAuth,
-	requireOrgAccess,
-} from "@/middleware/auth";
-import { logger } from "@/services/logger";
-import { metricsCollector } from "@/services/metrics";
-import type { CustomRequest } from "@/types";
+	containersAPI,
+	containerTopFilesSchema,
+	getRangeAPI,
+	rangeRouteSchema,
+	summaryAPI,
+	topFilesAPI,
+	topFilesSchema,
+} from "./metrics.schemas";
 
-const router: Router = Router();
+const app = new Hono();
 
-router.use(requireAuth, requireOrgAccess);
-
-/**
- * @openapi
- * tags:
- *   - name: metrics
- *     description: Metrics endpoints for tracking file access and usage
- */
+// Require auth for all metrics routes
+app.use("*", requireAuth);
 
 /**
- * @openapi
- * /v1/metrics/top-files:
- *   get:
- *     tags:
- *       - metrics
- *     summary: Get top accessed files among containers
- *     parameters:
- *       - in: query
- *         name: limit
- *         required: false
- *         schema:
- *           type: integer
- *           default: 10
- *           maximum: 100
- *         description: Max number of top files to return (max 100)
- *     responses:
- *       200:
- *         description: List of top accessed files
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 data:
- *                   type: array
- *                   description: Array of file access metrics
- *                   items:
- *                     type: object
- *                     properties:
- *                       path:
- *                         type: string
- *                       container:
- *                         type: string
- *                       blob:
- *                         type: string
- *                       totalAccesses:
- *                         type: integer
- *                       firstAccessed:
- *                         type: string
- *                       lastAccessed:
- *                         type: string
- *                       recentUsersCount:
- *                         type: integer
- *                       recentUsers:
- *                         type: array
- *                         items:
- *                           type: string
- *                 limit:
- *                   type: integer
- *                 requestId:
- *                   type: string
- *       401:
- *         description: Unauthorized (authentication required)
- *       403:
- *         description: Forbidden (organization access required)
- *       500:
- *         description: Server error retrieving top files
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                 message:
- *                   type: string
- *                 requestId:
- *                   type: string
+ * Get top files accessed across all containers.
+ * Optional limit parameter to control number of results.
  */
-router.get("/top-files", (req: CustomRequest, res: Response) => {
-	try {
-		const limit = Math.min(
-			Number.parseInt(String(req.query.limit), 10) || 10,
-			100,
-		);
-		const data = metricsCollector.getTopAccessedFiles(limit);
+app.get(
+	"/top-files",
+	describeRoute(topFilesAPI),
+	zValidator("param", topFilesSchema),
+	async (c) => {
+		try {
+			const { limit } = c.req.valid("param");
+			const data = metricsCollector.getAccessedFiles(limit);
 
-		res.json({
-			success: true,
-			data,
-			limit,
-			requestId: req.id,
-		});
-	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
-		logger.error("Failed to get top accessed files", {
-			requestId: req.id,
-			error: message,
-		});
-		res.status(500).json({
-			error: "Server Error",
-			message: "Could not retrieve top accessed files",
-			requestId: req.id,
-		});
-	}
-});
+			return c.json({
+				success: true,
+				data,
+				limit,
+				requestId: c.get("requestId"),
+			});
+		} catch (error) {
+			logger.error(
+				{
+					error: error instanceof Error ? error.message : String(error),
+					stack: error instanceof Error ? error.stack : undefined,
+					requestId: c.get("requestId"),
+				},
+				"Failed to get top accessed files",
+			);
+			return c.json(
+				{
+					error: "Server Error",
+					message: "Could not retrieve top accessed files",
+					requestId: c.get("requestId"),
+				},
+				500,
+			);
+		}
+	},
+);
 
 /**
- * @openapi
- * /v1/metrics/containers:
- *   get:
- *     tags:
- *       - metrics
- *     summary: Get aggregated statistics for each container
- *     responses:
- *       200:
- *         description: Container statistics retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 data:
- *                   type: array
- *                   description: Aggregated statistics for each container
- *                   items:
- *                     type: object
- *                     properties:
- *                       container:
- *                         type: string
- *                       totalAccesses:
- *                         type: integer
- *                       uniqueFiles:
- *                         type: integer
- *                       uniqueUsers:
- *                         type: integer
- *                 requestId:
- *                   type: string
- *       401:
- *         description: Unauthorized (authentication required)
- *       403:
- *         description: Forbidden (organization access required)
- *       500:
- *         description: Server error retrieving container stats
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                 message:
- *                   type: string
- *                 requestId:
- *                   type: string
+ * Get container statistics.
  */
-router.get("/containers", (req: CustomRequest, res: Response) => {
+app.get("/containers", describeRoute(containersAPI), (c) => {
 	try {
 		const data = metricsCollector.getContainerStats();
-		res.json({
+		return c.json({
 			success: true,
 			data,
-			requestId: req.id,
+			requestId: c.get("requestId"),
 		});
-	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
-		logger.error("Failed to get container stats", {
-			requestId: req.id,
-			error: message,
-		});
-		res.status(500).json({
-			error: "Server Error",
-			message: "Could not retrieve container stats",
-			requestId: req.id,
-		});
+	} catch (error) {
+		logger.error(
+			{
+				error: error instanceof Error ? error.message : String(error),
+				stack: error instanceof Error ? error.stack : undefined,
+				requestId: c.get("requestId"),
+			},
+			"Failed to get container stats",
+		);
+		return c.json(
+			{
+				error: "Server Error",
+				message: "Could not retrieve container stats",
+				requestId: c.get("requestId"),
+			},
+			500,
+		);
 	}
 });
 
 /**
- * @openapi
- * /v1/metrics/summary:
- *   get:
- *     tags:
- *       - metrics
- *     summary: Get summary statistics for all containers
- *     responses:
- *       200:
- *         description: Metrics summary
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 data:
- *                   type: object
- *                   properties:
- *                     totalFiles:
- *                       type: integer
- *                     totalAccesses:
- *                       type: integer
- *                     uniqueUsers:
- *                       type: integer
- *                     uniqueContainers:
- *                       type: integer
- *                     averageAccessesPerFile:
- *                       type: integer
- *                 requestId:
- *                   type: string
- *       401:
- *         description: Unauthorized (authentication required)
- *       403:
- *         description: Forbidden (organization access required)
- *       500:
- *         description: Server error retrieving metrics summary
+ * Get container summary statistics.
  */
-router.get("/summary", (req: CustomRequest, res: Response) => {
+app.get("/summary", describeRoute(summaryAPI), (c) => {
 	try {
 		const data = metricsCollector.getSummaryStats();
-		res.json({
+		return c.json({
 			success: true,
 			data,
-			requestId: req.id,
+			requestId: c.get("requestId"),
 		});
-	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
-		logger.error("Failed to get summary stats", {
-			requestId: req.id,
-			error: message,
-		});
-		res.status(500).json({
+	} catch (error) {
+		logger.error(
+			{
+				error: error instanceof Error ? error.message : String(error),
+				stack: error instanceof Error ? error.stack : undefined,
+				requestId: c.get("requestId"),
+			},
+			"Failed to get summary stats",
+		);
+		return c.json({
 			error: "Server Error",
 			message: "Could not retrieve summary stats",
-			requestId: req.id,
+			requestId: c.get("requestId"),
 		});
 	}
 });
 
 /**
- * @openapi
- * /v1/metrics/range:
- *   get:
- *     tags:
- *       - metrics
- *     summary: Get metrics by date range
- *     parameters:
- *       - in: query
- *         name: startDate
- *         required: true
- *         schema:
- *           type: string
- *           format: date
- *         description: Start date for the metrics range
- *       - in: query
- *         name: endDate
- *         required: false
- *         schema:
- *           type: string
- *           format: date
- *         description: End date for the metrics range (optional)
- *     responses:
- *       200:
- *         description: Metrics retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 data:
- *                   type: object
- *                   description: Retrieved metrics data
- *                 requestId:
- *                   type: string
- *       400:
- *         description: Bad request, missing required parameters
- *       500:
- *         description: Server error retrieving metrics by date range
+ * Get file metrics by a time range.
+ * startdate parameter is required, enddate is optional.
  */
-router.get("/range", (req: CustomRequest, res: Response) => {
-	try {
-		const { startDate, endDate } = req.query;
-		if (!startDate) {
-			res.status(400).json({
-				error: "Missing required query parameters",
-				message: "startDate is required",
-				requestId: req.id,
+app.get(
+	"/range",
+	describeRoute(getRangeAPI),
+	zValidator("param", rangeRouteSchema),
+	(c) => {
+		try {
+			const { startDate, endDate } = c.req.valid("param");
+
+			const data = metricsCollector.getMetricsByTimeRange(startDate, endDate);
+
+			return c.json({
+				success: true,
+				data,
+				range: { startDate, endDate },
+				requestId: c.get("requestId"),
 			});
+		} catch (error) {
+			logger.error(
+				{
+					error: error instanceof Error ? error.message : String(error),
+					stack: error instanceof Error ? error.stack : undefined,
+					requestId: c.get("requestId"),
+				},
+				"Failed to get metrics by date range",
+			);
+			return c.json(
+				{
+					error: "Server Error",
+					message: "Could not retrieve metrics for date range",
+					requestId: c.get("requestId"),
+				},
+				500,
+			);
 		}
-
-		const start = new Date(String(startDate));
-		const end = endDate ? new Date(String(endDate)) : new Date();
-
-		const data = metricsCollector.getMetricsByTimeRange(start, end);
-
-		res.json({
-			success: true,
-			data,
-			range: { startDate, end },
-			requestId: req.id,
-		});
-	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
-		logger.error("Failed to get metrics by date range", {
-			requestId: req.id,
-			error: message,
-		});
-		res.status(500).json({
-			error: "Server Error",
-			message: "Could not retrieve metrics for date range",
-			requestId: req.id,
-		});
-	}
-});
+	},
+);
 
 /**
- * @openapi
- * /v1/metrics/{container}/top-files:
- *   get:
- *     tags:
- *       - metrics
- *     summary: Get top accessed files in a container
- *     parameters:
- *       - in: path
- *         name: container
- *         required: true
- *         schema:
- *           type: string
- *         description: Azure blob container name
- *       - in: query
- *         name: limit
- *         required: false
- *         schema:
- *           type: integer
- *           default: 10
- *           maximum: 100
- *         description: Max number of top files to return (max 100)
- *     responses:
- *       200:
- *         description: List of top accessed files
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 data:
- *                   type: array
- *                   description: Array of file access metrics
- *                   items:
- *                     type: object
- *                     properties:
- *                       path:
- *                         type: string
- *                       container:
- *                         type: string
- *                       blob:
- *                         type: string
- *                       totalAccesses:
- *                         type: integer
- *                       firstAccessed:
- *                         type: string
- *                       lastAccessed:
- *                         type: string
- *                       recentUsersCount:
- *                         type: integer
- *                       recentUsers:
- *                         type: array
- *                         items:
- *                           type: string
- *                 limit:
- *                   type: integer
- *                 requestId:
- *                   type: string
- *       401:
- *         description: Unauthorized (authentication required)
- *       403:
- *         description: Forbidden (organization access required)
- *       500:
- *         description: Server error retrieving top files
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                 message:
- *                   type: string
- *                 requestId:
- *                   type: string
+ * Get top files accessed within a container.
+ * Optional limit parameter to control number of results.
  */
-router.get("/:container/top-files", (req: CustomRequest, res: Response) => {
-	try {
-		const { container } = req.params;
-		const limit = Math.min(
-			Number.parseInt(String(req.query.limit), 10) || 10,
-			100,
-		);
-		const topFiles = metricsCollector.getTopAccessedFiles(limit, container);
+app.get(
+	"/:container/top-files",
+	describeRoute(getRangeAPI),
+	zValidator("param", containerTopFilesSchema),
+	(c) => {
+		try {
+			const { container, limit } = c.req.valid("param");
+			const topFiles = metricsCollector.getAccessedFiles(limit, container);
 
-		res.json({
-			success: true,
-			data: topFiles,
-			limit,
-			requestId: req.id,
-		});
-	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
-		logger.error("Error retrieving top files metrics", {
-			requestId: req.id,
-			error: message,
-		});
-		res.status(500).json({
-			error: "Server Error",
-			message: "Unable to retrieve metrics",
-			requestId: req.id,
-		});
-	}
-});
+			return c.json({
+				success: true,
+				data: topFiles,
+				limit,
+				requestId: c.get("requestId"),
+			});
+		} catch (error) {
+			logger.error(
+				{
+					error: error instanceof Error ? error.message : String(error),
+					stack: error instanceof Error ? error.stack : undefined,
+					requestId: c.get("requestId"),
+				},
+				"Error retrieving top files metrics",
+			);
+			return c.json(
+				{
+					error: "Server Error",
+					message: "Unable to retrieve metrics",
+					requestId: c.get("requestId"),
+				},
+				500,
+			);
+		}
+	},
+);
 
 /**
  * @openapi
@@ -498,28 +255,31 @@ router.get("/:container/top-files", (req: CustomRequest, res: Response) => {
  *       500:
  *         description: Server error retrieving container metrics
  */
-router.get("/:container/files", (req: CustomRequest, res: Response) => {
-	try {
-		const { container } = req.params;
-		const containerStats = metricsCollector.getContainerMetrics(container);
-		res.json({
-			success: true,
-			data: containerStats,
-			requestId: req.id,
-		});
-	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
-		logger.error("Error retrieving container metrics", {
-			requestId: req.id,
-			error: message,
-		});
-		res.status(500).json({
-			error: "Server Error",
-			message: "Unable to retrieve container metrics",
-			requestId: req.id,
-		});
-	}
-});
+/**
+ * Get files metadata for a container.
+ */
+// app.get("/:container/files", (c) => {
+// 	try {
+// 		const { container } = req.params;
+// 		const containerStats = metricsCollector.getContainerMetrics(container);
+// 		res.json({
+// 			success: true,
+// 			data: containerStats,
+// 			requestId: req.id,
+// 		});
+// 	} catch (err) {
+// 		const message = err instanceof Error ? err.message : String(err);
+// 		logger.error("Error retrieving container metrics", {
+// 			requestId: req.id,
+// 			error: message,
+// 		});
+// 		res.status(500).json({
+// 			error: "Server Error",
+// 			message: "Unable to retrieve container metrics",
+// 			requestId: req.id,
+// 		});
+// 	}
+// });
 
 /**
  * @openapi
@@ -594,133 +354,130 @@ router.get("/:container/files", (req: CustomRequest, res: Response) => {
  *       500:
  *         description: Server error retrieving metrics
  */
-router.get("/:container/range", (req: CustomRequest, res: Response) => {
-	try {
-		const { container } = req.params;
-		const { startDate, endDate } = req.query;
-
-		if (!startDate) {
-			res.status(400).json({
-				error: "Missing required query parameters",
-				message: "startDate is required",
-				requestId: req.id,
-			});
-			return;
-		}
-
-		const start = new Date(String(startDate));
-		const end = endDate ? new Date(String(endDate)) : new Date();
-
-		const data = metricsCollector.getMetricsByTimeRange(start, end, container);
-
-		res.json({
-			success: true,
-			data,
-			range: { startDate, end },
-			requestId: req.id,
-		});
-	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
-		logger.error("Failed to get metrics for container by date range", {
-			container: req.params.container,
-			requestId: req.id,
-			error: message,
-		});
-		res.status(500).json({
-			error: "Server Error",
-			message: "Could not retrieve metrics for container and date range",
-			requestId: req.id,
-		});
-	}
-});
+/**
+ * Get file metrics for a container by a time range.
+ * startdate parameter is required, enddate is optional.
+ */
+// router.get("/:container/range", (req: CustomRequest, res: Response) => {
+// 	try {
+// 		const { container } = req.params;
+// 		const { startDate, endDate } = req.query;
+//
+// 		if (!startDate) {
+// 			res.status(400).json({
+// 				error: "Missing required query parameters",
+// 				message: "startDate is required",
+// 				requestId: req.id,
+// 			});
+// 			return;
+// 		}
+//
+// 		const start = new Date(String(startDate));
+// 		const end = endDate ? new Date(String(endDate)) : new Date();
+//
+// 		const data = metricsCollector.getMetricsByTimeRange(start, end, container);
+//
+// 		res.json({
+// 			success: true,
+// 			data,
+// 			range: { startDate, end },
+// 			requestId: req.id,
+// 		});
+// 	} catch (err) {
+// 		const message = err instanceof Error ? err.message : String(err);
+// 		logger.error("Failed to get metrics for container by date range", {
+// 			container: req.params.container,
+// 			requestId: req.id,
+// 			error: message,
+// 		});
+// 		res.status(500).json({
+// 			error: "Server Error",
+// 			message: "Could not retrieve metrics for container and date range",
+// 			requestId: req.id,
+// 		});
+// 	}
+// });
 
 /**
  * Handler for exporting metrics. Used by both GET and POST.
  */
-const exportMetricsHandler = async (
-	req: CustomRequest,
-	res: Response,
-	next: NextFunction,
-) => {
-	try {
-		const format = (
-			req.query.format ||
-			req.body?.format ||
-			"json"
-		).toLowerCase();
-		const user = getCurrentUser(req);
-
-		if (!["json", "csv"].includes(format)) {
-			res.status(400).json({
-				error: "Invalid format",
-				message: "Format must be 'json' or 'csv'",
-				requestId: req.id,
-			});
-			return;
-		}
-
-		await metricsCollector.forcePersist();
-
-		const allMetrics = metricsCollector.getAllFiles();
-		const timestamp = new Date().toISOString().split("T")[0];
-
-		if (format === "csv") {
-			const csvHeader =
-				"Path,Container/Bucket,Blob/Key,Storage Type,Total Accesses,First Accessed,Last Accessed,Recent Users Count\n";
-			const csvRows = allMetrics
-				.map((m) =>
-					[
-						`"${m.path}"`,
-						m.container,
-						`"${m.blob}"`,
-						m.storageType,
-						m.totalAccesses,
-						m.firstAccessed && typeof m.firstAccessed.toISOString === "function"
-							? m.firstAccessed.toISOString()
-							: (m.firstAccessed ?? ""),
-						m.lastAccessed && typeof m.lastAccessed.toISOString === "function"
-							? m.lastAccessed.toISOString()
-							: (m.lastAccessed ?? ""),
-						m.recentUsersCount,
-					].join(","),
-				)
-				.join("\n");
-
-			res.setHeader("Content-Type", "text/csv");
-			res.setHeader(
-				"Content-Disposition",
-				`attachment; filename="metrics-${timestamp}.csv"`,
-			);
-			res.send(csvHeader + csvRows);
-		} else {
-			// JSON
-			res.setHeader("Content-Type", "application/json");
-			res.json({
-				exportedAt: new Date().toISOString(),
-				exportedBy: user?.email ?? "unknown",
-				metrics: allMetrics,
-				fieldDescriptions: {
-					container: "Azure: container, S3: bucket",
-					blob: "Azure: blob, S3: key",
-					storageType: "azure or s3 (inferred)",
-				},
-			});
-		}
-		logger.info("Metrics exported successfully", {
-			requestId: req.id,
-			userId: user?.id,
-			format,
-		});
-	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
-		logger.error("Error during metrics export", {
-			requestId: req.id,
-			message: message,
-			stack: err instanceof Error ? err.stack : "",
-		});
-		next(err);
-	}
-};
+// const exportMetricsHandler = async (c: Context, next: Next) => {
+// 	try {
+// 		const user = c.get("user");
+// 		const body = await c.req.json().catch(() => ({}));
+// 		const format = (
+// 			c.req.query("format") ||
+// 			body.format ||
+// 			"json"
+// 		).toLowerCase();
+//
+// 		if (!["json", "csv"].includes(format)) {
+// 			return c.json(
+// 				{
+// 					error: "Invalid format",
+// 					message: "Format must be 'json' or 'csv'",
+// 					requestId: c.get("requestId"),
+// 				},
+// 				400,
+// 			);
+// 		}
+//
+// 		await metricsCollector.forcePersist();
+// 		const allMetrics = metricsCollector.getAccessedFiles();
+// 		const timestamp = new Date().toISOString().split("T")[0];
+//
+// 		if (format === "csv") {
+// 			const csvHeader =
+// 				"Path,Container/Bucket,Blob/Key,Storage Type,Total Accesses,First Accessed,Last Accessed,Recent Users Count\n";
+// 			const csvRows = allMetrics
+// 				.map((m) =>
+// 					[
+// 						m.container,
+// 						`"${m.blob}"`,
+// 						m.totalAccesses,
+// 						m.firstAccessed && typeof m.firstAccessed.toISOString === "function"
+// 							? m.firstAccessed.toISOString()
+// 							: (m.firstAccessed ?? ""),
+// 						m.lastAccessed && typeof m.lastAccessed.toISOString === "function"
+// 							? m.lastAccessed.toISOString()
+// 							: (m.lastAccessed ?? ""),
+// 						m.recentUsersCount,
+// 					].join(","),
+// 				)
+// 				.join("\n");
+//
+// 			c.header("Content-Type", "text/csv");
+// 			c.header(
+// 				"Content-Disposition",
+// 				`attachment; filename="metrics-${timestamp}.csv"`,
+// 			);
+// 			return c.text(csvHeader + csvRows);
+// 		} else {
+// 			// JSON
+// 			c.header("Content-Type", "application/json");
+// 			return c.json({
+// 				exportedAt: new Date().toISOString(),
+// 				exportedBy: user?.email ?? "unknown",
+// 				metrics: allMetrics,
+// 				fieldDescriptions: {
+// 					container: "Azure: container, S3: bucket",
+// 					blob: "Azure: blob, S3: key",
+// 					storageType: "azure or s3 (inferred)",
+// 				},
+// 			});
+// 		}
+// 	} catch (error) {
+// 		logger.error(
+// 			{
+// 				error: error instanceof Error ? error.message : String(error),
+// 				stack: error instanceof Error ? error.stack : undefined,
+// 				requestId: c.get("requestId"),
+// 			},
+// 			"Error during metrics export",
+// 		);
+// 		next();
+// 	}
+// };
 
 /**
  * @openapi
@@ -798,8 +555,11 @@ const exportMetricsHandler = async (
  *       500:
  *         description: Server error during export
  */
-router.get("/:container/export", exportMetricsHandler);
-router.post("/:container/export", exportMetricsHandler);
+/**
+ * Export metrics data as either JSON or CSV.
+ */
+// router.get("/:container/export", exportMetricsHandler);
+// router.post("/:container/export", exportMetricsHandler);
 
 /**
  * @openapi
@@ -872,56 +632,62 @@ router.post("/:container/export", exportMetricsHandler);
  *                 requestId:
  *                   type: string
  */
-router.post("/", async (req: CustomRequest, res: Response) => {
-	const action = req.query.action;
-	try {
-		if (action === "clear") {
-			if (process.env.NODE_ENV === "production") {
-				res.status(403).json({
-					error: "Forbidden",
-					message: "Not allowed in production",
-					requestId: req.id,
-				});
-				return;
-			}
+/**
+ * Clear or persist metrics based on the action specified in the query parameter.
+ * action=clear will clear all metrics (not allowed in production).
+ * action=persist will force persist the current metrics to database.
+ */
+// router.post("/", async (req: CustomRequest, res: Response) => {
+// 	const action = req.query.action;
+// 	try {
+// 		if (action === "clear") {
+// 			if (process.env.NODE_ENV === "production") {
+// 				res.status(403).json({
+// 					error: "Forbidden",
+// 					message: "Not allowed in production",
+// 					requestId: req.id,
+// 				});
+// 				return;
+// 			}
+//
+// 			metricsCollector.clearMetrics();
+// 			res.json({
+// 				success: true,
+// 				message: "Metrics cleared",
+// 				requestId: req.id,
+// 			});
+// 			return;
+// 		}
+//
+// 		if (action === "persist") {
+// 			await metricsCollector.forcePersist();
+// 			res.json({
+// 				success: true,
+// 				message: "Metrics persisted",
+// 				requestId: req.id,
+// 			});
+// 			return;
+// 		}
+//
+// 		res.status(400).json({
+// 			error: "Invalid action",
+// 			message: `Unsupported action: ${action}`,
+// 			requestId: req.id,
+// 		});
+// 	} catch (err) {
+// 		const message = err instanceof Error ? err.message : String(err);
+// 		logger.error(`Failed to perform metrics action: ${action}`, {
+// 			requestId: req.id,
+// 			error: message,
+// 		});
+// 		res.status(500).json({
+// 			error: "Server Error",
+// 			message: `Could not ${action} metrics`,
+// 			requestId: req.id,
+// 		});
+// 	}
+// });
 
-			metricsCollector.clearMetrics();
-			res.json({
-				success: true,
-				message: "Metrics cleared",
-				requestId: req.id,
-			});
-			return;
-		}
-
-		if (action === "persist") {
-			await metricsCollector.forcePersist();
-			res.json({
-				success: true,
-				message: "Metrics persisted",
-				requestId: req.id,
-			});
-			return;
-		}
-
-		res.status(400).json({
-			error: "Invalid action",
-			message: `Unsupported action: ${action}`,
-			requestId: req.id,
-		});
-	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
-		logger.error(`Failed to perform metrics action: ${action}`, {
-			requestId: req.id,
-			error: message,
-		});
-		res.status(500).json({
-			error: "Server Error",
-			message: `Could not ${action} metrics`,
-			requestId: req.id,
-		});
-	}
-});
 /**
  * @openapi
  * /v1/metrics/{container}:
@@ -968,30 +734,33 @@ router.post("/", async (req: CustomRequest, res: Response) => {
  *       500:
  *         description: Server error retrieving metrics summary
  */
-router.get("/:container", (req: CustomRequest, res: Response) => {
-	try {
-		const { container } = req.params;
-		const summary = metricsCollector.getSummaryStats(container);
+/**
+ * Get metrics summary for a specific container.
+ */
+// router.get("/:container", (req: CustomRequest, res: Response) => {
+// 	try {
+// 		const { container } = req.params;
+// 		const summary = metricsCollector.getSummaryStats(container);
+//
+// 		res.json({
+// 			success: true,
+// 			data: {
+// 				...summary,
+// 			},
+// 			requestId: req.id,
+// 		});
+// 	} catch (err) {
+// 		const message = err instanceof Error ? err.message : String(err);
+// 		logger.error("Error retrieving metrics summary", {
+// 			requestId: req.id,
+// 			error: message,
+// 		});
+// 		res.status(500).json({
+// 			error: "Server Error",
+// 			message: "Unable to retrieve metrics summary",
+// 			requestId: req.id,
+// 		});
+// 	}
+// });
 
-		res.json({
-			success: true,
-			data: {
-				...summary,
-			},
-			requestId: req.id,
-		});
-	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
-		logger.error("Error retrieving metrics summary", {
-			requestId: req.id,
-			error: message,
-		});
-		res.status(500).json({
-			error: "Server Error",
-			message: "Unable to retrieve metrics summary",
-			requestId: req.id,
-		});
-	}
-});
-
-export default router;
+export default app;

@@ -1,38 +1,33 @@
 # Dockerfile for Azure Blob / S3 Bucket Proxy Server
 
-# Use official Node.js LTS image
-FROM node:20-alpine AS base
+# Use official Bun image
+FROM oven/bun:latest AS base
 
 # Set working directory
 WORKDIR /app
 
-# Install pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
-
-# Copy package.json and pnpm-lock.yaml
-COPY package.json pnpm-lock.yaml ./
-
-# Install dependencies
-RUN pnpm install --frozen-lockfile
-
-# Copy source files
+# Copy package.json, bun.lock, and all source files
+COPY package.json bun.lock ./
 COPY . .
 
+# Install dependencies
+RUN bun install --frozen-lockfile
+
 # Build the app
-RUN pnpm build
+RUN bun run build
 
 # Use a minimal image for running
-FROM node:20-alpine AS runner
+FROM oven/bun:alpine AS runner
 WORKDIR /app
 
-# Copy only built files and node_modules from build stage
+# Copy only built files and dependencies from build stage
 COPY --from=base /app/dist ./dist
 COPY --from=base /app/node_modules ./node_modules
 COPY --from=base /app/package.json ./
+COPY --from=base /app/bun.lockb ./
 
-# Expose the port (default Express port, change if needed)
+# Expose port 3000
 EXPOSE 3000
 
 # Start the app
-CMD ["node", "./dist/app.js"]
-
+CMD ["bun", "run", "start"]

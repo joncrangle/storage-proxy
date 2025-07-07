@@ -1,7 +1,6 @@
-import { randomBytes } from "node:crypto";
-import { z } from "zod";
+import * as z from "zod";
 
-const configSchema = z.object({
+export const configSchema = z.object({
 	STORAGE_PROVIDER: z.string().optional().default("azure"),
 	AWS_ACCESS_KEY_ID: z.string().optional(),
 	AWS_SECRET_ACCESS_KEY: z.string().optional(),
@@ -23,7 +22,7 @@ const configSchema = z.object({
 				throw new Error("Invalid PORT");
 			return port;
 		}),
-	BASE_URL: z.string().url().optional(),
+	BASE_URL: z.url().min(1, "BASE_URL is required"),
 	ALLOWED_ORGANIZATION_ID: z.string().optional(),
 	NODE_ENV: z
 		.enum(["development", "production", "test"])
@@ -49,28 +48,6 @@ const configSchema = z.object({
 	JWT_AUDIENCE: z.string().optional(),
 	JWT_ISSUER: z.string().optional(),
 	JWT_ALLOWED_APPS: z.string().optional(), // Comma-separated list of allowed app IDs
-	REDIS_HOST: z.string().optional().default("valkey"),
-	REDIS_PORT: z
-		.string()
-		.optional()
-		.default("6379")
-		.transform((val) => {
-			const port = Number(val);
-			if (Number.isNaN(port) || port <= 0 || port > 65535)
-				throw new Error("Invalid REDIS_PORT");
-			return port;
-		}),
-	REDIS_PASSWORD: z.string().optional(),
-	REDIS_DB: z
-		.string()
-		.optional()
-		.default("0")
-		.transform((val) => {
-			const port = Number(val);
-			if (Number.isNaN(val)) throw new Error("Invalid REDIS_DB");
-			return port;
-		}),
-	METRICS_STORAGE_PATH: z.string().optional().default("./metrics"),
 	METRICS_RETENTION_DAYS: z
 		.string()
 		.optional()
@@ -78,21 +55,62 @@ const configSchema = z.object({
 		.transform((v) => Number.parseInt(v, 10)),
 });
 
-export const config = configSchema.parse(process.env);
+const config = configSchema.parse(process.env);
 
-// Derived Constants
-const isLocalEnv =
+export const NODE_ENV = config.NODE_ENV;
+export const isLocalEnv =
 	config.NODE_ENV === "development" || config.NODE_ENV === "test";
 export const PORT = config.PORT;
 export const BASE_URL = config.BASE_URL ?? `http://localhost:${PORT}`;
 export const SESSION_TIMEOUT = 24 * 60 * 60 * 1000; // 24 hours
+export const TOUCH_INTERVAL = 60 * 1000; // 1 minute
 export const CACHE_TTL = config.CACHE_TTL;
 export const MAX_FILE_SIZE = config.MAX_FILE_SIZE;
-export const SESSION_SECRET =
-	config.SESSION_SECRET ?? randomBytes(32).toString("hex");
-
-// Determine storage configuration based on environment
-export const STORAGE_CONNECTION_STRING =
+export const SESSION_SECRET = config.SESSION_SECRET;
+export const STORAGE_PROVIDER = config.STORAGE_PROVIDER;
+export const AZURE_STORAGE_CONNECTION_STRING =
 	isLocalEnv && config.AZURITE_CONNECTION_STRING
 		? config.AZURITE_CONNECTION_STRING
 		: config.AZURE_STORAGE_CONNECTION_STRING;
+export const ENTRA = {
+	TENANT_ID: config.AZURE_TENANT_ID,
+	CLIENT_SECRET: config.AZURE_CLIENT_SECRET,
+	CLIENT_ID: config.AZURE_CLIENT_ID,
+	JWT_AUDIENCE: config.JWT_AUDIENCE,
+	JWT_ISSUER: config.JWT_ISSUER,
+	JWT_ALLOWED_APPS: config.JWT_ALLOWED_APPS,
+	ALLOWED_ORGANIZATION_ID: config.ALLOWED_ORGANIZATION_ID,
+};
+export const AWS = {
+	ACCESS_KEY_ID: config.AWS_ACCESS_KEY_ID,
+	SECRET_ACCESS_KEY: config.AWS_SECRET_ACCESS_KEY,
+	REGION: config.AWS_REGION,
+	S3_BUCKET: config.AWS_S3_BUCKET,
+};
+export const LOG_LEVEL = config.LOG_LEVEL;
+export const METRICS_RETENTION_DAYS = config.METRICS_RETENTION_DAYS;
+
+// Prepopulate local development/test storage providers
+if (isLocalEnv) {
+	if (STORAGE_PROVIDER === "azure") {
+		import("../mock/azure/prepopulate-azurite")
+			.then(({ prepopulateContainers }) => prepopulateContainers())
+			.then(() => console.log("Azurite blobs prepopulated."))
+			.catch((err) =>
+				console.warn(
+					{
+						error: err.message,
+					},
+					"Azurite blobs prepopulation failed",
+				),
+			);
+	}
+	if (STORAGE_PROVIDER === "s3") {
+		import("../mock/aws/prepopulate-moto")
+			.then(({ prepopulateBuckets }) => prepopulateBuckets())
+			.then(() => console.log("Moto S3 buckets prepopulated."))
+			.catch((err) =>
+				console.warn({ error: err.message }, "Moto S3 prepopulation failed"),
+			);
+	}
+}
