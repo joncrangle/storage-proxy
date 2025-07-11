@@ -5,7 +5,6 @@ export const configSchema = z.object({
 	AWS_ACCESS_KEY_ID: z.string().optional(),
 	AWS_SECRET_ACCESS_KEY: z.string().optional(),
 	AWS_REGION: z.string().optional(),
-	AWS_S3_BUCKET: z.string().optional(),
 	AZURE_TENANT_ID: z.string().min(1, "AZURE_TENANT_ID is required"),
 	AZURE_CLIENT_ID: z.string().min(1, "AZURE_CLIENT_ID is required"),
 	AZURE_CLIENT_SECRET: z.string().min(1, "AZURE_CLIENT_SECRET is required"),
@@ -85,32 +84,6 @@ export const AWS = {
 	ACCESS_KEY_ID: config.AWS_ACCESS_KEY_ID,
 	SECRET_ACCESS_KEY: config.AWS_SECRET_ACCESS_KEY,
 	REGION: config.AWS_REGION,
-	S3_BUCKET: config.AWS_S3_BUCKET,
 };
 export const LOG_LEVEL = config.LOG_LEVEL;
 export const METRICS_RETENTION_DAYS = config.METRICS_RETENTION_DAYS;
-
-// Prepopulate local development/test storage providers
-if (isLocalEnv) {
-	if (STORAGE_PROVIDER === "azure") {
-		import("../mock/azure/prepopulate-azurite")
-			.then(({ prepopulateContainers }) => prepopulateContainers())
-			.then(() => console.log("Azurite blobs prepopulated."))
-			.catch((err) =>
-				console.warn(
-					{
-						error: err.message,
-					},
-					"Azurite blobs prepopulation failed",
-				),
-			);
-	}
-	if (STORAGE_PROVIDER === "s3") {
-		import("../mock/aws/prepopulate-moto")
-			.then(({ prepopulateBuckets }) => prepopulateBuckets())
-			.then(() => console.log("Moto S3 buckets prepopulated."))
-			.catch((err) =>
-				console.warn({ error: err.message }, "Moto S3 prepopulation failed"),
-			);
-	}
-}

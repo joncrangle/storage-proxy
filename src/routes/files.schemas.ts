@@ -133,7 +133,22 @@ export const fileListAPI = {
 					),
 					example: {
 						success: true,
-						container: [],
+						container: [
+							{
+								name: "example-container",
+								status: "connected",
+								blobs: [
+									{
+										name: "example-file.txt",
+										properties: {
+											size: 1024,
+											lastModified: new Date().toISOString(),
+											contentType: "text/plain",
+										},
+									},
+								],
+							},
+						],
 						requestId: "abc123",
 					},
 				},

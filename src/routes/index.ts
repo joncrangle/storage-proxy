@@ -25,6 +25,7 @@ app.get("/", describeRoute(homeAPI), async (c) => {
 	const user = c.get("user");
 	return c.json({
 		name: "Azure Blob Storage Proxy",
+		version: process.env.npm_package_version ?? "unknown",
 		status: "running",
 		environment: NODE_ENV,
 		logging: LOG_LEVEL,
@@ -217,6 +218,7 @@ app.onError((err, c) => {
 });
 
 app.notFound((c) => {
+	console.log("Route not found:", c.req.path, c.req.method);
 	const path = c.req.path;
 	const method = c.req.method;
 	const requestId = c.get("requestId");

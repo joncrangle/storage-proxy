@@ -9,14 +9,9 @@ let storageImpl: StorageImpl;
 
 if (STORAGE_PROVIDER === "s3") {
 	// Validate required AWS config
-	if (
-		!AWS.ACCESS_KEY_ID ||
-		!AWS.SECRET_ACCESS_KEY ||
-		!AWS.S3_BUCKET ||
-		!AWS.REGION
-	) {
+	if (!AWS.ACCESS_KEY_ID || !AWS.SECRET_ACCESS_KEY || !AWS.REGION) {
 		throw new Error(
-			"Missing required AWS S3 configuration. Please set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_BUCKET, and AWS_REGION.",
+			"Missing required AWS S3 configuration. Please set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_REGION.",
 		);
 	}
 	storageImpl = await import("./s3.js");

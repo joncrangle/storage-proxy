@@ -23,12 +23,7 @@ if (
 		},
 	});
 } else {
-	if (
-		!AWS.ACCESS_KEY_ID ||
-		!AWS.SECRET_ACCESS_KEY ||
-		!AWS.REGION ||
-		!AWS.S3_BUCKET
-	) {
+	if (!AWS.ACCESS_KEY_ID || !AWS.SECRET_ACCESS_KEY || !AWS.REGION) {
 		logger.error("AWS credentials or region are missing.");
 		process.exit(1);
 	}
@@ -91,7 +86,7 @@ export async function downloadBlob(container: string, blobPath: string) {
 				Key: blobPath,
 			}),
 		);
-		return { readableStreamBody: res.Body };
+		return { readableStreamBody: res.Body, exists: true };
 	} catch (err) {
 		const message = err instanceof Error ? err.message : String(err);
 		logger.error(
