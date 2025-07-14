@@ -24,7 +24,7 @@
 	},
 	"dependencies": {
 		"@aws-sdk/client-s3": "^3.842.0",
-		"@azure/msal-node": "^3.6.2",
+		"@azure/msal-node": "^3.6.3",
 		"@azure/storage-blob": "^12.27.0",
 		"@dotenvx/dotenvx": "^1.45.2",
 		"compression": "^1.8.0",
