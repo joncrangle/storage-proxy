@@ -2,6 +2,7 @@ import * as z from "zod";
 
 export const configSchema = z.object({
 	STORAGE_PROVIDER: z.string().optional().default("azure"),
+	DB_PATH: z.string().optional().default("file:./storage-proxy.sqlite"),
 	AWS_ACCESS_KEY_ID: z.string().optional(),
 	AWS_SECRET_ACCESS_KEY: z.string().optional(),
 	AWS_REGION: z.string().optional(),
@@ -57,6 +58,7 @@ export const configSchema = z.object({
 const config = configSchema.parse(process.env);
 
 export const NODE_ENV = config.NODE_ENV;
+export const DB_PATH = config.DB_PATH;
 export const isLocalEnv =
 	config.NODE_ENV === "development" || config.NODE_ENV === "test";
 export const PORT = config.PORT;

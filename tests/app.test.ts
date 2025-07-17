@@ -612,15 +612,13 @@ describe.each(["azure", "s3"])("%s storage provider:", (provider) => {
 		SESSION_SECRET: "session-secret",
 	};
 
-	beforeEach(async () => {
-		await seedDb();
-	});
-
 	afterAll(async () => {
 		await resetDb();
 	});
 
 	beforeEach(async () => {
+		await seedDb();
+
 		// 1. Clear cache
 		Object.keys(require.cache).forEach((key) => {
 			if (key.includes("/src/")) {
