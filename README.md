@@ -47,47 +47,47 @@ flowchart TD
 ```
 .
 ├── docker/
-│   └── Dockerfile               # Dockerfile for building the application
+│   └── Dockerfile                  # Dockerfile for building the application
 ├── mock/
 │   ├── aws/
-│   │   ├── moto.http            # Setup S3 buckets and objects for Moto
-│   │   ├── prepopulate-moto.ts  # Prepopulate Moto with test data
-│   │   └── s3.js                # Signing helper for `moto.http`
+│   │   ├── moto.http               # Setup S3 buckets and objects for Moto
+│   │   ├── prepopulate-moto.ts     # Prepopulate Moto with test data
+│   │   └── s3.js                   # Signing helper for `moto.http`
 │   ├── azure/
-│   │   ├── azurite.http         # Setup azurite containers
-│   │   ├── prepopulate-azurite.ts # Prepopulate Azurite with test data
-│   │   └── az.js                # Signing helper for `azurite.http`
-│   ├── test.html                # Test anchor tags
-│   └── test.pdf                 # Test file
+│   │   ├── azurite.http            # Setup azurite containers
+│   │   ├── prepopulate-azurite.ts  # Prepopulate Azurite with test data
+│   │   └── az.js                   # Signing helper for `azurite.http`
+│   ├── test.html                   # Test anchor tags
+│   └── test.pdf                    # Test file
 ├── src/
 │   ├── middleware/
-│   │   ├── auth.ts              # Microsoft Entra ID authentication middleware
-│   │   ├── core.ts              # Core request handler
-│   │   └── logger.ts            # Structured logging middleware
+│   │   ├── auth.ts                 # Microsoft Entra ID authentication middleware
+│   │   ├── core.ts                 # Core request handler
+│   │   └── logger.ts               # Structured logging middleware
 │   ├── routes/
-│   │   ├── files.ts             # File proxy endpoints
-│   │   ├── metrics.ts           # Metrics API endpoints
-│   │   ├── index.ts             # Main API router
-│   │   └── files.schemas.ts     # Zod schemas for file routes
+│   │   ├── files.ts                # File proxy endpoints
+│   │   ├── metrics.ts              # Metrics API endpoints
+│   │   ├── index.ts                # Main API router
+│   │   └── files.schemas.ts        # Zod schemas for file routes
 │   ├── services/
-│   │   ├── azure.ts             # Azure blob provider
-│   │   ├── s3.ts                # S3 bucket provider
-│   │   ├── db.ts                # SQLite/Drizzle ORM setup
-│   │   ├── metrics.ts           # Metrics provider
-│   │   ├── logger.ts            # Logger provider
-│   │   └── storage.ts           # Storage provider interface
-│   ├── app.ts                   # Main Hono server
-│   ├── config.ts                # Environment configuration
-│   ├── server.ts                # Bun server entrypoint
-│   └── types.ts                 # Type definitions
+│   │   ├── azure.ts                # Azure blob provider
+│   │   ├── s3.ts                   # S3 bucket provider
+│   │   ├── db.ts                   # SQLite/Drizzle ORM setup
+│   │   ├── metrics.ts              # Metrics provider
+│   │   ├── logger.ts               # Logger provider
+│   │   └── storage.ts              # Storage provider interface
+│   ├── app.ts                      # Main Hono server
+│   ├── config.ts                   # Environment configuration
+│   ├── server.ts                   # Bun server entrypoint
+│   └── types.ts                    # Type definitions
 ├── tests/
-│   └── app.test.ts              # Bun test runner tests
-├── .sample.env                  # Example environment variables
-├── bun.lock                     # Bun lock file
-├── docker-compose.yml           # Docker Compose configuration
-├── package.json                 # Project dependencies and scripts
-├── tsconfig.json                # TypeScript configuration
-└── vitest.config.ts             # (Legacy) Vitest configuration
+│   └── app.test.ts                 # Bun test runner tests
+├── .sample.env                     # Example environment variables
+├── bun.lock                        # Bun lock file
+├── docker-compose.yml              # Docker Compose configuration
+├── package.json                    # Project dependencies and scripts
+├── tsconfig.json                   # TypeScript configuration
+└── vitest.config.ts                # (Legacy) Vitest configuration
 ```
 
 ## 🔧 Configuration
