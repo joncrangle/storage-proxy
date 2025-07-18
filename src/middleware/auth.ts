@@ -21,12 +21,8 @@ export const requireAuth = async (c: Context, next: Next) => {
 
 	if (c.req.method === "GET") {
 		try {
-			const callbackURL = `${encodeURIComponent(c.req.url)}`;
 			const { url: oauthUrl } = await auth.api.signInSocial({
-				body: {
-					provider: "microsoft",
-					callbackURL: callbackURL,
-				},
+				body: { provider: "microsoft" },
 				request: c.req.raw,
 			});
 
