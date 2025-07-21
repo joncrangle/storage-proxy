@@ -26,7 +26,7 @@ RUN bun run build --target=bun
 FROM oven/bun:alpine AS runner
 WORKDIR /app
 
-ENV DB_PATH=file:/app/data/storage-proxy.sqlite
+ENV DB_PATH=file:/app/data/storage-proxy.sqlite3
 
 # Copy only built files and dependencies from build stage
 COPY --from=base /app/dist ./dist
