@@ -31,7 +31,7 @@
 		"better-sqlite3": "^12.2.0",
 		"drizzle-orm": "^0.44.4",
 		"hono": "^4.8.12",
-		"hono-openapi": "^0.4.8",
+		"hono-openapi": "^1.0.3",
 		"hono-rate-limiter": "^0.4.2",
 		"lru-cache": "^11.1.0",
 		"pino": "^9.7.0",
