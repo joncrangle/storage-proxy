@@ -22,17 +22,21 @@ RUN bun install --frozen-lockfile
 # Build the app
 RUN bun run build --target=bun
 
-# Use a minimal image for running
-FROM oven/bun:alpine AS runner
+# Use a Debian-based image for running to match glibc from build stage
+FROM oven/bun:latest AS runner
 WORKDIR /app
 
 ENV DB_PATH=file:/app/data/storage-proxy.sqlite3
 
-# Copy only built files and dependencies from build stage
+# Copy built files and dependencies
 COPY --from=base /app/dist ./dist
 COPY --from=base /app/package.json ./
 COPY --from=base /app/bun.lock ./
 COPY --from=base /app/node_modules ./node_modules
+
+# Copy Drizzle config and schema sources needed by drizzle-kit at runtime
+COPY --from=base /app/drizzle.config.* ./
+COPY --from=base /app/src ./src
 
 RUN mkdir -p /app/data && chown bun:bun /app/data
 
